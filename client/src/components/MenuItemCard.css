@@ -1,0 +1,35 @@
+/* Complementa los estilos de la tarjeta definidos en Menu.css (sin estilos en línea). */
+.menu-item-card__title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--ui-space-2);
+  min-width: 0;
+}
+
+.item-main-image { cursor: pointer; }
+.item-main-image.is-zoomable { cursor: zoom-in; }
+
+/* Flechas de la galería sobre la imagen. */
+.ui-icon-button.item-image-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 2;
+  border: 1px solid var(--ui-border);
+  border-radius: 50%;
+  background: var(--ui-surface);
+  color: var(--ui-text);
+  box-shadow: var(--ui-shadow-overlay);
+}
+.ui-icon-button.item-image-nav--prev { left: var(--ui-space-2); }
+.ui-icon-button.item-image-nav--next { right: var(--ui-space-2); }
+
+/* Acciones de la tarjeta: la barra la maqueta Menu.css; los botones son del kit. */
+.menu-card-actions { align-items: center; gap: var(--ui-space-1); padding: var(--ui-space-1); }
+.menu-card-actions .ui-button.menu-card__action { flex: 1; justify-content: center; }
+.menu-card-actions .menu-card__action--delete { flex: 0 0 auto; }
+
+/* Solo lectura (p. ej. cocina): se ocultan las mutaciones. */
+.menu-readonly .menu-card__action--edit,
+.menu-readonly .menu-card__action--delete { display: none; }

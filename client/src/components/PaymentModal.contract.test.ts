@@ -57,9 +57,15 @@ describe('PaymentModal contract', () => {
         expect(styles).toContain('width: min(1180px, 100%)');
         expect(styles).toContain('grid-template-columns: 310px minmax(0, 1fr)');
         expect(styles).toContain('.payment-dialog .app-select__control');
-        expect(styles).toContain('min-height: 46px');
-        expect(source).toContain('scrollAreaRef.current?.scrollTo({ top: 0 })');
+        // Los selects del cobro siguen la altura estándar del kit (40px) en lugar del ritmo propio de 46px.
+        expect(styles).toContain('min-height: var(--ui-control-md)');
+        expect(styles).not.toContain('min-height: 46px');
+        expect(source).toContain("scrollAreaRef.current?.closest('.ui-fsm__body')?.scrollTo({ top: 0 })");
         expect(source).not.toContain('payment-footer-mode');
+        // El cascarón es del kit: FullScreenModal con acciones en el pie y selector de modo con SegmentedControl.
+        expect(source).toContain('<FullScreenModal');
+        expect(source).toContain('<SegmentedControl<PaymentMode>');
+        expect(source).not.toContain('createPortal');
     });
 
     it('keeps payment financial-only and contains no delivery or warehouse coupling', () => {

@@ -4,7 +4,7 @@
     left: 0;
     right: 0;
     bottom: 0;
-    background: color-mix(in srgb, var(--dialog-overlay, var(--ui-overlay)) 86%, var(--ui-surface-2) 14%);
+    background: var(--ui-overlay);
     z-index: 9999;
     display: flex;
     align-items: center;
@@ -18,10 +18,10 @@
     position: relative;
     max-width: min(1400px, 92vw);
     max-height: 88vh;
-    border: 1px solid color-mix(in srgb, white 20%, transparent);
+    border: 1px solid var(--ui-border);
     border-radius: var(--radius-xl);
-    background: var(--ui-overlay);
-    box-shadow: var(--dialog-panel-shadow, 0 28px 70px -24px var(--ui-text));
+    background: var(--ui-surface);
+    box-shadow: var(--ui-shadow-overlay);
 }
 
 .viewer-image {
@@ -29,17 +29,16 @@
     max-height: calc(88vh - 2px);
     object-fit: contain;
     border-radius: calc(var(--radius-xl) - 1px);
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
     display: block;
 }
 
-.viewer-close-btn {
+.viewer-content .viewer-close-btn {
     position: absolute;
     top: -52px;
     right: 0;
-    background: var(--ui-overlay);
-    border: 1px solid color-mix(in srgb, var(--ui-surface) 24%, transparent);
-    color: white;
+    background: var(--ui-surface);
+    border: 1px solid var(--ui-border);
+    color: var(--ui-text);
     width: 40px;
     height: 40px;
     border-radius: var(--radius-lg);
@@ -51,25 +50,25 @@
     z-index: 10000;
 }
 
-.viewer-close-btn:hover {
-    background: color-mix(in srgb, var(--dialog-accent) 30%, var(--ui-overlay));
-    border-color: var(--dialog-accent);
+.viewer-content .viewer-close-btn:hover {
+    background: var(--ui-primary);
+    border-color: var(--ui-primary);
     color: var(--ui-primary-fg);
 }
 
-.viewer-close-btn:focus-visible,
-.viewer-nav-btn:focus-visible {
-    outline: 2px solid white;
-    outline-offset: 3px;
+.viewer-content .viewer-close-btn:focus-visible,
+.viewer-content .viewer-nav-btn:focus-visible {
+    outline: none;
+    box-shadow: var(--ui-focus-ring);
 }
 
-.viewer-nav-btn {
+.viewer-content .viewer-nav-btn {
     position: absolute;
     top: 50%;
     transform: translateY(-50%);
-    background: var(--ui-overlay);
-    color: white;
-    border: none;
+    background: var(--ui-surface);
+    color: var(--ui-text);
+    border: 1px solid var(--ui-border);
     width: 50px;
     height: 50px;
     border-radius: var(--radius-lg);
@@ -80,25 +79,25 @@
     transition: all 0.2s;
 }
 
-.viewer-nav-btn:hover {
-    background: color-mix(in srgb, var(--ui-surface) 20%, transparent);
+.viewer-content .viewer-nav-btn:hover {
+    background: var(--ui-surface-2);
     transform: translateY(-50%) scale(1.1);
 }
 
-.viewer-nav-btn.prev {
+.viewer-content .viewer-nav-btn.prev {
     left: 10px;
 }
 
-.viewer-nav-btn.next {
+.viewer-content .viewer-nav-btn.next {
     right: 10px;
 }
 
 @media (min-width: 768px) {
-    .viewer-nav-btn.prev {
+    .viewer-content .viewer-nav-btn.prev {
         left: -70px;
     }
 
-    .viewer-nav-btn.next {
+    .viewer-content .viewer-nav-btn.next {
         right: -70px;
     }
 }
@@ -108,9 +107,12 @@
     bottom: -40px;
     left: 50%;
     transform: translateX(-50%);
-    color: white;
-    font-size: 14px;
-    opacity: 0.8;
+    padding: 2px 12px;
+    border-radius: 999px;
+    border: 1px solid var(--ui-border);
+    background: var(--ui-surface);
+    color: var(--ui-text);
+    font-size: var(--ui-text-sm);
 }
 
 @keyframes viewerFadeIn {
@@ -122,11 +124,11 @@
     .image-viewer-overlay { padding: 58px 12px 52px; }
     .viewer-content { max-width: 100%; max-height: 80dvh; }
     .viewer-image { max-height: 80dvh; }
-    .viewer-nav-btn { width: 42px; height: 42px; }
+    .viewer-content .viewer-nav-btn { width: 42px; height: 42px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
     .image-viewer-overlay { animation: none; }
-    .viewer-close-btn,
-    .viewer-nav-btn { transition: none; }
+    .viewer-content .viewer-close-btn,
+    .viewer-content .viewer-nav-btn { transition: none; }
 }

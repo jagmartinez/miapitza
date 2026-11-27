@@ -27,7 +27,6 @@
     gap: var(--ui-space-3);
     padding: var(--ui-space-4);
     border-bottom: 1px solid var(--ui-border);
-    background: color-mix(in srgb, var(--ui-surface-2) 92%, var(--ui-primary) 8%);
 }
 
 .card > header h2 { margin: 0.2rem 0 0; color: var(--ui-text); font-size: var(--ui-text-lg); }
@@ -36,7 +35,7 @@
 
 .eyebrow { color: var(--ui-text-muted); font-size: var(--ui-text-xs); font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; }
 
-.count { display: grid; min-width: 2.25rem; height: 2.25rem; padding-inline: 0.55rem; place-items: center; border-radius: 999px; background: var(--ui-primary); color: white; font-weight: 800; }
+.count { display: grid; min-width: 2.25rem; height: 2.25rem; padding-inline: 0.55rem; place-items: center; border-radius: 999px; background: var(--ui-primary); color: var(--ui-primary-fg); font-weight: 800; }
 
 .taskList { display: grid; }
 
@@ -100,7 +99,7 @@
 
 .route li.complete .stepNumber { border-color: var(--ui-success); background: color-mix(in srgb, var(--ui-success) 14%, var(--ui-surface)); color: var(--ui-success); }
 
-.route li.complete button > svg { color: var(--ui-success); }
+.route li.complete a > svg { color: var(--ui-success); }
 
 .route li.current { box-shadow: inset 3px 0 var(--ui-primary); }
 
@@ -130,4 +129,4 @@
 }
 
 /* tarjetas KPI de @/ui/StatCard: se reparten el ancho y bajan de línea */
-.kpiRow { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: var(--ui-space-3); min-width: 0; }
+.kpiRow { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 18rem), 1fr)); gap: var(--ui-space-3); min-width: 0; }

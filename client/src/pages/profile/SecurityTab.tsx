@@ -340,7 +340,7 @@ function SessionsSection({ sessions, loading, failed, reload }: {
 
     const columns: Column<SessionRow>[] = [
         {
-            key: 'device', header: 'Dispositivo', width: '1.4fr',
+            key: 'device', header: 'Dispositivo',
             render: (s) => (
                 <span className="profile-device">
                     {s.device === 'Móvil' ? <Smartphone size={16} aria-hidden="true" /> : <Monitor size={16} aria-hidden="true" />}
@@ -350,11 +350,11 @@ function SessionsSection({ sessions, loading, failed, reload }: {
             ),
         },
         { key: 'ipAddress', header: 'IP', render: (s) => s.ipAddress || 'No disponible' },
-        { key: 'createdAt', header: 'Inicio', render: (s) => fmtDateTime(s.createdAt) },
+        { key: 'createdAt', header: 'Inicio', type: 'date', render: (s) => fmtDateTime(s.createdAt) },
         {
-            key: 'actions', header: <span className="sr-only">Acciones</span>, type: 'actions', width: '5rem',
+            key: 'actions', header: <span className="sr-only">Acciones</span>, type: 'actions', width: '100px',
             render: (s) => s.isCurrent ? null : (
-                <IconButton icon={LogOut} size="sm" label={`Cerrar sesión en ${s.device || 'navegador'}`} onClick={() => setPending({ kind: 'one', id: s.id })} />
+                <IconButton icon={LogOut} size="sm" tone="danger" tooltip="Cerrar sesión" label={`Cerrar sesión en ${s.device || 'navegador'}`} onClick={() => setPending({ kind: 'one', id: s.id })} />
             ),
         },
     ];
@@ -405,9 +405,9 @@ function PermissionsMatrix({ roleName, description, permissions }: {
         ? permissions
         : (ROLE_CAPS[roleName] || ['Acceso básico']).map((cap, i) => ({ id: -(i + 1), name: cap }));
     const columns: Column<RolePermissionRow>[] = [
-        { key: 'name', header: 'Permiso', width: '1.4fr' },
-        { key: 'description', header: 'Descripción', width: '2fr', render: (p) => p.description || '—' },
-        { key: 'state', header: 'Acceso', type: 'status', width: '8rem', render: () => <Badge tone="success" dot>Activo</Badge> },
+        { key: 'name', header: 'Permiso' },
+        { key: 'description', header: 'Descripción', render: (p) => p.description || '—' },
+        { key: 'state', header: 'Acceso', type: 'status', render: () => <Badge tone="success" dot>Activo</Badge> },
     ];
     return (
         <>

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { HrPayrollRun } from '../../types/hr-payroll';
@@ -62,9 +62,8 @@ describe('PayrollManagement', () => {
     expect(within(draftRow).getAllByText('N/D').length).toBeGreaterThanOrEqual(3);
     expect(within(draftRow).queryByText('C$ 0.00')).toBeNull();
 
-    // La tarjeta de neto toma la corrida calculada, no el borrador en ceros.
-    const card = screen.getByRole('region', { name: 'Neto a pagar' });
-    await waitFor(() => expect(within(card).getByText('C$ 1,234.50')).toBeInTheDocument());
+    // Los KPI de nómina viven en el tablero de RH (/rh); la vista operativa no repite tarjetas.
+    expect(screen.queryByRole('region', { name: 'Neto a pagar' })).toBeNull();
     expect(screen.queryByText('C$ 0.00')).toBeNull();
   });
 });

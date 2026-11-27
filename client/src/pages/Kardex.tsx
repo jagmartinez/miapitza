@@ -10,7 +10,7 @@ import { kardexUrlFilters } from '../utils/kardexLink';
 import { FileText, Download, Filter, ArrowLeft } from 'lucide-react';
 import catalog from './catalog.module.css';
 import {
-    AppSelect, Badge, Button, DataTable, DateInput, EmptyState, PageContent, PageHeader, StatCard, TableToolbar,
+    AppSelect, Badge, Button, DataTable, DateInput, EmptyState, PageContent, PageHeader, TableToolbar,
     formatNumber, type Column, type Tone,
 } from '@/ui';
 
@@ -224,8 +224,8 @@ export default function Kardex() {
             && movement.originalUnit !== unitLabel
             && movement.originalQuantity != null;
         return showOriginal ? (
-            <span className={catalog.muted} style={{ display: 'block' }}>
-                ({movement.originalQuantity} {movement.originalUnit})
+            <span className={catalog.muted}>
+                ({formatNumber(num(movement.originalQuantity), 3)} {movement.originalUnit})
             </span>
         ) : null;
     };
@@ -266,39 +266,58 @@ export default function Kardex() {
             <PageHeader
                 title={`Kardex de inventario${kardexData ? `: ${kardexData.product.name}` : ''}`}
                 description="Entradas, salidas y saldo valorizado por producto."
-                actions={(
-                    <>
-                        <Button icon={ArrowLeft} variant="ghost" onClick={() => navigate('/inventory')}>Volver a Inventario</Button>
-                        <Button icon={Download} onClick={handleExport} disabled={!kardexData}>Excel</Button>
-                    </>
-                )}
+                actions={<Button icon={ArrowLeft} variant="ghost" onClick={() => navigate('/inventory')}>Volver a Inventario</Button>}
             />
 
+            <TableToolbar actions={(
+                <>
+                    <Button icon={Download} onClick={handleExport} disabled={!kardexData}>Excel</Button>
+                    <Button variant="primary" icon={Filter} onClick={loadKardex} disabled={!selectedProduct} loading={loading}>
+                        Aplicar
+                    </Button>
+                </>
+            )}>
+                <AppSelect<number>
+                    aria-label="Producto"
+                    options={products.map((p) => ({ value: p.id, label: `${p.name}${p.sku ? ` (${p.sku})` : ''}` }))}
+                    value={selectedProduct}
+                    onChange={(v) => setSelectedProduct(v ?? null)}
+                    placeholder="Selecciona un producto..."
+                    isClearable
+                />
+                <AppSelect<number>
+                    aria-label="Almacén"
+                    options={warehouses.map(w => ({ value: w.id, label: w.name }))}
+                    value={selectedWarehouse}
+                    onChange={(v) => setSelectedWarehouse(v ?? null)}
+                    placeholder="Todos los almacenes"
+                    isClearable
+                />
+                <DateInput aria-label="Desde" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+                <DateInput aria-label="Hasta" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+                <AppSelect<string>
+                    aria-label="Tipo de movimiento"
+                    isClearable={false}
+                    isSearchable={false}
+                    options={[
+                        { value: '', label: 'Todos los tipos' },
+                        { value: 'IN', label: 'Entrada' },
+                        { value: 'OUT', label: 'Salida' },
+                        { value: 'ADJUSTMENT', label: 'Ajuste' },
+                        { value: 'TRANSFER', label: 'Transferencia' }
+                    ]}
+                    value={movementType}
+                    onChange={(v) => setMovementType(v || '')}
+                />
+            </TableToolbar>
+
             {kardexData && (
-                <div className={catalog.kpiGrid}>
-                    <StatCard
-                        label="Saldo inicial"
-                        value={`${formatNumber(num(kardexData.openingBalance.quantity), 3)} ${unitLabel}`}
-                        context={`Valorizado en ${formatCurrency(kardexData.openingBalance.cost, settings)}`}
-                    />
-                    <StatCard
-                        label="Total entradas"
-                        tone="success"
-                        value={`${formatNumber(num(kardexData.totals.totalIn), 3)} ${unitLabel}`}
-                        context="Compras, producción, ajustes y traslados recibidos en el período"
-                    />
-                    <StatCard
-                        label="Total salidas"
-                        tone="warning"
-                        value={`${formatNumber(num(kardexData.totals.totalOut), 3)} ${unitLabel}`}
-                        context="Ventas, consumo, mermas y traslados enviados en el período"
-                    />
-                    <StatCard
-                        label="Saldo final"
-                        value={`${formatNumber(num(kardexData.closingBalance.quantity), 3)} ${unitLabel}`}
-                        context={`Valorizado en ${formatCurrency(kardexData.closingBalance.cost, settings)}`}
-                    />
-                </div>
+                <p className={catalog.summaryLine} role="status">
+                    <span>Saldo inicial <strong>{formatNumber(num(kardexData.openingBalance.quantity))} {unitLabel}</strong> ({formatCurrency(kardexData.openingBalance.cost, settings)})</span>
+                    <span>Entradas <strong>{formatNumber(num(kardexData.totals.totalIn))} {unitLabel}</strong></span>
+                    <span>Salidas <strong>{formatNumber(num(kardexData.totals.totalOut))} {unitLabel}</strong></span>
+                    <span>Saldo final <strong>{formatNumber(num(kardexData.closingBalance.quantity))} {unitLabel}</strong> ({formatCurrency(kardexData.closingBalance.cost, settings)})</span>
+                </p>
             )}
 
             <DataTable
@@ -316,60 +335,20 @@ export default function Kardex() {
                         description={kardexData ? undefined : 'Elige un producto y aplica los filtros para ver entradas, salidas y saldo.'}
                     />
                 )}
-                toolbar={(
-                    <TableToolbar actions={(
-                        <Button variant="primary" icon={Filter} onClick={loadKardex} disabled={!selectedProduct} loading={loading}>
-                            Aplicar
-                        </Button>
-                    )}>
-                        <AppSelect<number>
-                            aria-label="Producto"
-                            options={products.map((p) => ({ value: p.id, label: `${p.name}${p.sku ? ` (${p.sku})` : ''}` }))}
-                            value={selectedProduct}
-                            onChange={(v) => setSelectedProduct(v ?? null)}
-                            placeholder="Selecciona un producto..."
-                            isClearable
-                        />
-                        <AppSelect<number>
-                            aria-label="Almacén"
-                            options={warehouses.map(w => ({ value: w.id, label: w.name }))}
-                            value={selectedWarehouse}
-                            onChange={(v) => setSelectedWarehouse(v ?? null)}
-                            placeholder="Todos los almacenes"
-                            isClearable
-                        />
-                        <DateInput aria-label="Desde" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
-                        <DateInput aria-label="Hasta" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
-                        <AppSelect<string>
-                            aria-label="Tipo de movimiento"
-                            isClearable={false}
-                            isSearchable={false}
-                            options={[
-                                { value: '', label: 'Todos los tipos' },
-                                { value: 'IN', label: 'Entrada' },
-                                { value: 'OUT', label: 'Salida' },
-                                { value: 'ADJUSTMENT', label: 'Ajuste' },
-                                { value: 'TRANSFER', label: 'Transferencia' }
-                            ]}
-                            value={movementType}
-                            onChange={(v) => setMovementType(v || '')}
-                        />
-                    </TableToolbar>
-                )}
                 columns={[
                     { key: 'date', header: 'Fecha', type: 'date' },
-                    { key: 'type', header: 'Tipo', render: (movement) => (
+                    { key: 'type', header: 'Tipo', type: 'status', render: (movement) => (
                         <Badge tone={MOVEMENT_TONE[movement.type] ?? 'neutral'}>{MOVEMENT_LABEL[movement.type] ?? movement.type}</Badge>
                     ) },
-                    { key: 'reference', header: 'Referencia' },
+                    { key: 'reference', header: 'Referencia', type: 'text' },
                     { key: 'in', header: 'Entrada', type: 'qty', render: (movement) => (
-                        <span>
+                        <span className={catalog.cellStack}>
                             {movement.in ? `${formatNumber(num(movement.in), 3)} ${unitLabel}` : '—'}
                             {movement.in ? originalHint(movement) : null}
                         </span>
                     ) },
                     { key: 'out', header: 'Salida', type: 'qty', render: (movement) => (
-                        <span>
+                        <span className={catalog.cellStack}>
                             {movement.out ? `${formatNumber(num(movement.out), 3)} ${unitLabel}` : '—'}
                             {movement.out ? originalHint(movement) : null}
                         </span>

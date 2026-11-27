@@ -7,14 +7,14 @@ import { useAppToast } from '../context/ToastContext';
 import { hasAnyRole } from '../utils/authz';
 import { useNavigate } from 'react-router-dom';
 import { branchesAPI, cashRegistersAPI, cashShiftsAPI } from '../services/api';
-import { Wallet, Unlock, History, Plus, Search } from 'lucide-react';
+import { Unlock, Eye, Plus } from 'lucide-react';
 import type { Branch, CashRegister, CashShift } from '../types';
 import { useCurrency } from '../hooks/useCurrency';
 import { formatLocalDateInput } from '../utils/dateInput';
 import styles from './CashRegisters.module.css';
 import {
-    AppSelect, Badge, Button, DataTable, DateInput, EmptyState, Field, FormSection, FullScreenModal, Input,
-    PageHeader, SegmentedControl, formatNumber, type Column,
+    AppSelect, Badge, Button, DataTable, DateInput, Field, FormSection, FullScreenModal, IconButton, Input,
+    PageContent, PageHeader, TableToolbar, Tabs, formatNumber, type Column,
 } from '@/ui';
 
 export default function CashRegisters() {
@@ -27,6 +27,7 @@ export default function CashRegisters() {
     const [registers, setRegisters] = useState<CashRegister[]>([]);
     const [shifts, setShifts] = useState<CashShift[]>([]);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
     const [viewTab, setViewTab] = useState<'registers' | 'history'>('registers');
 
     // Filters
@@ -55,9 +56,11 @@ export default function CashRegisters() {
     const loadRegisters = useCallback(async () => {
         try {
             setLoading(true);
+            setLoadError(null);
             const res = await cashRegistersAPI.getAll();
             setRegisters(res.data.data);
         } catch (error) {
+            setLoadError(getApiErrorMessage(error, 'No se pudieron cargar las cajas'));
             notifyError(error, 'No se pudieron cargar las cajas');
         } finally {
             setLoading(false);
@@ -83,12 +86,14 @@ export default function CashRegisters() {
     const loadShifts = useCallback(async () => {
         try {
             setLoading(true);
+            setLoadError(null);
             const res = await cashShiftsAPI.getAll({
                 startDate,
                 endDate: endDate + 'T23:59:59.999Z'
             });
             setShifts(res.data.data);
         } catch (error: unknown) {
+            setLoadError(getApiErrorMessage(error, 'No se pudieron cargar los turnos de caja'));
             notifyError(error, 'No se pudieron cargar los turnos de caja');
         } finally {
             setLoading(false);
@@ -143,7 +148,8 @@ export default function CashRegisters() {
         setIsModalOpen(true);
     };
 
-    const confirmOpenShift = async () => {
+    const confirmOpenShift = async (e?: React.FormEvent) => {
+        e?.preventDefault();
         if (!selectedRegisterId) {
             showWarning('Seleccione una caja para abrir el turno.');
             return;
@@ -211,51 +217,48 @@ export default function CashRegisters() {
     );
 
     const registerColumns: Column<CashRegister>[] = [
-        { key: 'name', header: 'Caja', width: '1.6fr', render: (r) => <strong>{r.name}</strong> },
-        { key: 'branch', header: 'Sucursal', width: '1.4fr', render: (r) => r.branch?.name || 'Sucursal Principal' },
+        { key: 'name', header: 'Caja', render: (r) => <strong>{r.name}</strong> },
+        { key: 'branch', header: 'Sucursal', render: (r) => r.branch?.name || 'Sucursal Principal' },
         {
             key: 'status',
             header: 'Estado',
             type: 'status',
-            width: '0.8fr',
             render: (r) => <Badge tone={r.status === 'OPEN' ? 'success' : 'neutral'} dot>{r.status === 'OPEN' ? 'Abierta' : 'Cerrada'}</Badge>,
         },
         {
             key: 'actions',
             header: 'Acciones',
             type: 'actions',
-            width: '1fr',
+            width: '100px',
             render: (r) => r.status === 'CLOSED' ? (
-                <Button size="sm" variant="secondary" icon={Unlock} onClick={(e) => handleOpenShiftClick(e, r.id)}>Abrir Caja</Button>
+                <IconButton size="sm" icon={Unlock} tone="primary" label={`Abrir caja ${r.name}`} tooltip="Abrir caja" onClick={(e) => handleOpenShiftClick(e, r.id)} />
             ) : (
-                <Button size="sm" variant="primary" icon={History} onClick={(e) => void handleViewActiveShift(e, r.id)}>Ver Turno</Button>
+                <IconButton size="sm" icon={Eye} label={`Ver turno ${r.name}`} tooltip="Ver turno" onClick={(e) => void handleViewActiveShift(e, r.id)} />
             ),
         },
     ];
 
     const shiftColumns: Column<CashShift>[] = [
-        { key: 'id', header: 'Turno', width: '0.6fr', render: (s) => `#${s.id}` },
-        { key: 'register', header: 'Caja', width: '1.2fr', render: (s) => s.register?.name || s.cashRegister?.name || 'Caja' },
-        { key: 'user', header: 'Cajero', width: '1.2fr', render: (s) => s.user?.name || 'N/D' },
+        { key: 'id', header: 'Turno', render: (s) => `#${s.id}` },
+        { key: 'register', header: 'Caja', render: (s) => s.register?.name || s.cashRegister?.name || 'Caja' },
+        { key: 'user', header: 'Cajero', render: (s) => s.user?.name || 'N/D' },
         {
             key: 'startDate',
             header: 'Inicio',
-            width: '1.2fr',
+            type: 'date',
             render: (s) => `${new Date(s.startDate).toLocaleDateString('es-NI')} ${new Date(s.startDate).toLocaleTimeString('es-NI', { hour: '2-digit', minute: '2-digit' })}`,
         },
         {
             key: 'state',
             header: 'Estado',
             type: 'status',
-            width: '0.8fr',
             render: (s) => <Badge tone={s.endDate ? 'neutral' : 'success'} dot>{s.endDate ? 'Finalizado' : 'En Curso'}</Badge>,
         },
-        { key: 'startAmount', header: 'Saldo Inicial', type: 'money', width: '1fr', render: (s) => formatMoney(Number(s.startAmount)) },
+        { key: 'startAmount', header: 'Saldo Inicial', type: 'money', render: (s) => formatMoney(Number(s.startAmount)) },
         {
             key: 'difference',
             header: 'Diferencia',
             type: 'money',
-            width: '1fr',
             render: (s) => {
                 if (!s.endDate || s.difference === undefined || s.difference === null) return 'N/D';
                 const diff = Number(s.difference);
@@ -266,7 +269,7 @@ export default function CashRegisters() {
     ];
 
     return (
-        <div className={styles.page}>
+        <PageContent>
             <PageHeader
                 title="Cajas Registradoras"
                 description={viewTab === 'registers'
@@ -282,17 +285,24 @@ export default function CashRegisters() {
                 ) : undefined}
             />
 
-            <div className={styles.filters}>
-                <Field label="Buscar" htmlFor="cash-search">
-                    <Input
-                        id="cash-search"
-                        type="search"
-                        prefix={<Search size={16} aria-hidden="true" />}
-                        placeholder={viewTab === 'registers' ? 'Buscar caja o sucursal...' : 'Buscar por caja o cajero...'}
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                    />
-                </Field>
+            <Tabs
+                ariaLabel="Vista de cajas"
+                active={viewTab}
+                onChange={(id) => setViewTab(id as 'registers' | 'history')}
+                tabs={[
+                    { id: 'registers', label: 'Cajas' },
+                    { id: 'history', label: 'Historial' },
+                ]}
+            />
+
+            <TableToolbar>
+                <Input
+                    type="search"
+                    aria-label="Buscar"
+                    placeholder={viewTab === 'registers' ? 'Buscar caja o sucursal...' : 'Buscar por caja o cajero...'}
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                />
                 {viewTab === 'history' && (
                     <>
                         <Field label="Desde" htmlFor="cash-from">
@@ -303,16 +313,7 @@ export default function CashRegisters() {
                         </Field>
                     </>
                 )}
-                <SegmentedControl
-                    ariaLabel="Vista de cajas"
-                    value={viewTab}
-                    onChange={setViewTab}
-                    options={[
-                        { value: 'registers', label: 'Cajas' },
-                        { value: 'history', label: 'Historial' },
-                    ]}
-                />
-            </div>
+            </TableToolbar>
 
             {viewTab === 'registers' ? (
                 <DataTable<CashRegister>
@@ -324,7 +325,9 @@ export default function CashRegisters() {
                     defaultPageSize={25}
                     resetKey={searchQuery}
                     onRowClick={(r) => void (r.status === 'OPEN' ? handleViewActiveShift(undefined, r.id) : handleOpenShiftClick(undefined, r.id))}
-                    empty={<EmptyState icon={Wallet} title="No se encontraron cajas registradas" />}
+                    error={loadError}
+                    onRetry={() => void loadRegisters()}
+                    empty="No se encontraron cajas registradas"
                 />
             ) : (
                 <DataTable<CashShift>
@@ -336,7 +339,9 @@ export default function CashRegisters() {
                     defaultPageSize={25}
                     resetKey={`${searchQuery}|${startDate}|${endDate}`}
                     onRowClick={(s) => navigate(`/cash-shifts/${s.id}`)}
-                    empty={<EmptyState icon={History} title="No se encontró actividad en el rango seleccionado" />}
+                    error={loadError}
+                    onRetry={() => void loadShifts()}
+                    empty="No se encontró actividad en el rango seleccionado"
                 />
             )}
 
@@ -348,10 +353,11 @@ export default function CashRegisters() {
                 footer={({ requestClose }) => (
                     <>
                         <Button variant="ghost" onClick={requestClose}>Cancelar</Button>
-                        <Button variant="primary" onClick={() => void confirmOpenShift()}>Abrir Turno</Button>
+                        <Button variant="primary" type="submit" form="open-shift-form">Abrir Turno</Button>
                     </>
                 )}
             >
+                <form id="open-shift-form" onSubmit={(e) => void confirmOpenShift(e)}>
                 <FormSection title="Saldo de Apertura">
                     <Field label="Monto Inicial en Efectivo" htmlFor="register-start-amount" hint="Ingrese la cantidad total de efectivo disponible al iniciar.">
                         <Input
@@ -364,10 +370,10 @@ export default function CashRegisters() {
                             onChange={(e) => setStartAmount(e.target.value)}
                             placeholder="0.00"
                             autoFocus
-                            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void confirmOpenShift(); } }}
                         />
                     </Field>
                 </FormSection>
+                </form>
             </FullScreenModal>
 
             <FullScreenModal
@@ -380,10 +386,11 @@ export default function CashRegisters() {
                 footer={({ requestClose }) => (
                     <>
                         <Button type="button" variant="ghost" onClick={requestClose}>Cancelar</Button>
-                        <Button variant="primary" type="button" onClick={handleCreateRegister}>Guardar Caja</Button>
+                        <Button variant="primary" type="submit" form="create-register-form">Guardar Caja</Button>
                     </>
                 )}
             >
+                <form id="create-register-form" onSubmit={handleCreateRegister} noValidate>
                 {activeTab === 'general' && (
                     <FormSection title="Identificación">
                         <Field label="Nombre de la Caja" htmlFor="register-name" required>
@@ -410,7 +417,8 @@ export default function CashRegisters() {
                         )}
                     </FormSection>
                 )}
+                </form>
             </FullScreenModal>
-        </div>
+        </PageContent>
     );
 }

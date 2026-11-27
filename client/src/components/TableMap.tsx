@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Armchair, CopyPlus, LayoutDashboard, Link2, Lock, Maximize2, Plus, RotateCw, Save, Shapes, Trash2, Unlock, ZoomIn, ZoomOut } from 'lucide-react';
 import type { FloorArea, FloorAreaKind, FloorAreaShape, Table, TableFloorPlan } from '../types';
-import { AppSelect, Button, Field, Input, SegmentedControl, formatMoney } from '@/ui';
+import { AppSelect, Button, Field, IconButton, Input, SegmentedControl, formatMoney, formatNumber } from '@/ui';
 import { getChairPlacements } from './tableChairLayout';
 import { resolveTablePresentationState, type TablePresentationState } from '../utils/tablePresentation';
 import './TableMap.css';
@@ -44,8 +44,10 @@ interface TableMapProps {
     onReturnToAdministration?: () => void;
     branchControl?: ReactNode;
     themeControl?: ReactNode;
-    /** Indicadores del salón (tarjetas KPI); se despliegan desde el botón Indicadores. */
-    insights?: ReactNode;
+    /** Título y selector de vista de la página: el plano ocupa la pantalla y su barra hace de encabezado. */
+    heading?: ReactNode;
+    /** Acciones de página (históricos, avisos de cocina, orden para llevar) al final de la barra del plano. */
+    extraActions?: ReactNode;
     /** Minutos abiertos y consumo por mesa; amount null = N/D. Si se omite, no se muestra. */
     tableMeta?: Map<number, { minutes: number; amount: number | null }>;
     /** Las órdenes no se pudieron cargar: minutos y consumo se muestran como N/D. */
@@ -94,6 +96,7 @@ type SelectOption<T extends string = string> = { value: T; label: string };
 const FALLBACK_COLUMNS = 5;
 const FALLBACK_X_GAP = 165;
 const FALLBACK_Y_GAP = 125;
+// Paleta con la que se crean los salones: se guarda como dato del plano (el usuario lo edita); sin color guardado se usa el token del tema.
 const AREA_COLORS = ['#DFF4E8', '#E4EEFF', '#F8E8FF', '#FFF1D6', '#E4F5F7', '#FBE5E7'];
 const STATUS_OPTIONS: SelectOption<TablePresentationState | ''>[] = [
     { value: '', label: 'Todas las mesas' },
@@ -176,7 +179,8 @@ export default function TableMap({
     onReturnToAdministration,
     branchControl,
     themeControl,
-    insights
+    heading,
+    extraActions
 }: TableMapProps) {
     const createDraft = () => {
         const nextAreas = plan.areas.length ? plan.areas.map(normalizeArea) : [newArea(0)];
@@ -192,7 +196,6 @@ export default function TableMap({
     const [canvasHeight, setCanvasHeight] = useState(plan.canvasHeight);
     const [editing, setEditing] = useState(false);
     const [zoom, setZoom] = useState(1);
-    const [showInsights, setShowInsights] = useState(false);
     const [dirty, setDirty] = useState(false);
     const [selection, setSelection] = useState<Selection | null>(null);
     const [deletedAreaIds, setDeletedAreaIds] = useState<number[]>([]);
@@ -445,10 +448,13 @@ export default function TableMap({
     return (
         <section className={`table-map-shell ${editing ? 'is-editing' : ''}`} aria-label="Mapa de mesas">
             <div className="table-map-toolbar">
-                <div className="table-map-title-block">
-                    <strong>{editing ? 'Gestión de mesas · Editor del plano' : 'Gestión de mesas · Mapa operativo'}</strong>
-                    <span>{editing ? 'Selecciona un salón o mesa para cambiar tamaño, forma y rotación' : `${layout.length} ${layout.length === 1 ? 'mesa' : 'mesas'} · ${areas.length} ${areas.length === 1 ? 'salón' : 'salones'} · selecciona una mesa para operarla`}</span>
-                </div>
+                {heading && <div className="table-map-heading">{heading}</div>}
+                {editing && (
+                    <div className="table-map-title-block">
+                        <strong>Editor del plano</strong>
+                        <span>Selecciona un salón o mesa para cambiar tamaño, forma y rotación</span>
+                    </div>
+                )}
                 <div className="table-map-actions">
                     {!editing && (
                         <div className="table-map-status-filter">
@@ -463,18 +469,19 @@ export default function TableMap({
                     )}
                     {!editing && zoneOptions.length > 2 && (
                         <div className="table-map-zone-filter">
-                            <SegmentedControl ariaLabel="Zona del salón" size="sm" options={zoneOptions} value={activeZone} onChange={setZoneFilter} />
+                            <AppSelect<string>
+                                aria-label="Filtrar por zona"
+                                options={zoneOptions}
+                                value={activeZone}
+                                onChange={(value) => setZoneFilter(value ?? 'ALL')}
+                                isClearable={false}
+                            />
                         </div>
                     )}
                     {!editing && branchControl}
                     {!editing && themeControl}
-                    {!editing && insights && (
-                        <Button variant={showInsights ? 'primary' : 'secondary'} className={styles.touch} aria-expanded={showInsights} aria-controls="table-map-insights" onClick={() => setShowInsights((value) => !value)}>
-                            <LayoutDashboard size={18} /> Indicadores
-                        </Button>
-                    )}
-                    {!editing && onCreateTable && <Button variant="primary" className={styles.touch} onClick={onCreateTable}><Plus size={18} /> Nueva mesa</Button>}
-                    {!editing && onReturnToAdministration && <Button variant="secondary" className={styles.touch} onClick={onReturnToAdministration}><LayoutDashboard size={18} /> Administración</Button>}
+                    {!editing && onCreateTable && <Button variant="primary" icon={Plus} className={styles.touch} onClick={onCreateTable}>Nueva mesa</Button>}
+                    {!editing && onReturnToAdministration && <Button variant="secondary" icon={LayoutDashboard} className={styles.touch} onClick={onReturnToAdministration}>Administración</Button>}
                     {editing && (
                         <div className="table-map-area-selector">
                             <AppSelect<string>
@@ -488,23 +495,22 @@ export default function TableMap({
                     )}
                     <span className="table-map-action-divider table-map-zoom-only" aria-hidden="true" />
                     <div className="table-map-zoom-controls">
-                        <Button variant="secondary" className={styles.touch} onClick={() => setZoom((value) => Math.max(0.35, value - 0.1))} aria-label="Alejar plano"><ZoomOut size={18} /></Button>
-                        <output aria-label="Nivel de zoom">{Math.round(zoom * 100)}%</output>
-                        <Button variant="secondary" className={styles.touch} onClick={() => setZoom((value) => Math.min(1.8, value + 0.1))} aria-label="Acercar plano"><ZoomIn size={18} /></Button>
+                        <IconButton icon={ZoomOut} label="Alejar plano" tooltip="Alejar" onClick={() => setZoom((value) => Math.max(0.35, value - 0.1))} />
+                        <output aria-label="Nivel de zoom">{formatNumber(zoom * 100, 0)}%</output>
+                        <IconButton icon={ZoomIn} label="Acercar plano" tooltip="Acercar" onClick={() => setZoom((value) => Math.min(1.8, value + 0.1))} />
                     </div>
-                    {editing && <Button variant="secondary" className={styles.touch} onClick={addArea}><CopyPlus size={18} /> Agregar salón</Button>}
-                    {canEdit && <Button variant={editing ? 'primary' : 'secondary'} className={styles.touch} onClick={toggleEditing}>{editing ? <Unlock size={18} /> : <Lock size={18} />}{editing ? 'Salir' : 'Editar plano'}</Button>}
-                    {editing && <Button variant="primary" className={styles.touch} disabled={saving || !dirty} onClick={() => void save()}><Save size={18} /> {saving ? 'Guardando…' : 'Guardar plano'}</Button>}
+                    {editing && <Button variant="secondary" icon={CopyPlus} className={styles.touch} onClick={addArea}>Agregar salón</Button>}
+                    {canEdit && <Button variant="secondary" icon={editing ? Unlock : Lock} className={styles.touch} onClick={toggleEditing}>{editing ? 'Salir' : 'Editar plano'}</Button>}
+                    {editing && <Button variant="primary" icon={Save} className={styles.touch} loading={saving} disabled={saving || !dirty} onClick={() => void save()}>{saving ? 'Guardando…' : 'Guardar plano'}</Button>}
+                    {!editing && extraActions}
                 </div>
             </div>
-
-            {!editing && insights && showInsights && <div id="table-map-insights" className="table-map-insights">{insights}</div>}
 
             {!editing && areas.length > 0 && (
                 <nav className="table-map-mobile-areas" aria-label="Enfocar salón">
                     {areas.map((area) => {
                         const key = areaKey(area);
-                        return <button key={key} type="button" className={focusedAreaKey === key ? 'active' : ''} onClick={() => focusArea(key)}>{area.name}</button>;
+                        return <Button key={key} size="sm" variant={focusedAreaKey === key ? 'primary' : 'secondary'} aria-pressed={focusedAreaKey === key} onClick={() => focusArea(key)}>{area.name}</Button>;
                     })}
                 </nav>
             )}
@@ -519,7 +525,7 @@ export default function TableMap({
                                 const selected = selection?.kind === 'area' && selection.key === key;
                                 return (
                                     <div key={key} className={`table-floor-area shape-${area.mapShape.toLowerCase()} ${selected ? 'selected' : ''}`}
-                                        style={{ left: area.mapX, top: area.mapY, width: area.mapWidth, height: area.mapHeight, transform: `rotate(${area.mapRotation}deg)`, '--area-color': area.color || '#E4EEFF' } as React.CSSProperties}
+                                        style={{ left: area.mapX, top: area.mapY, width: area.mapWidth, height: area.mapHeight, transform: `rotate(${area.mapRotation}deg)`, ...(area.color ? { '--area-color': area.color } : {}) } as React.CSSProperties}
                                         role={editing ? 'button' : undefined}
                                         tabIndex={editing ? 0 : -1}
                                         aria-label={editing ? `Editar salón ${area.name}` : undefined}
@@ -594,15 +600,20 @@ export default function TableMap({
                                         <span className="map-table-surface">
                                             <span className="map-table-state-dot" aria-hidden="true" />
                                             {group && <span className="map-table-group-badge"><Link2 size={10} /> {isGroupPrimary ? `Grupo de ${groupMembers.length} mesas` : `Mesa ${groupPosition}/${groupMembers.length}`}</span>}
-                                            <span className="map-table-number">{table.number}</span>
+                                            <span className="map-table-number" title={table.number}>{table.number}</span>
+                                            {/* El estado se lee por color, punto y leyenda; el texto queda para lectores de pantalla. */}
                                             <span className="map-table-status">{presentationLabel}</span>
-                                            <span className="map-table-capacity">{table.capacity} {table.capacity === 1 ? 'silla' : 'sillas'}</span>
-                                            {isOpen && (
+                                            {isOpen ? (
                                                 <span className="map-table-consumption">
-                                                    {tableMetaUnavailable
-                                                        ? 'N/D'
-                                                        : `${meta ? `${meta.minutes} min` : 'N/D'} · ${meta?.amount != null ? formatMoney(meta.amount, currencySymbol || 'C$') : 'N/D'}`}
+                                                    {tableMetaUnavailable ? 'N/D' : (
+                                                        <>
+                                                            <span>{meta?.amount != null ? formatMoney(meta.amount, currencySymbol || 'C$') : 'N/D'}</span>
+                                                            <span className="map-table-minutes">{meta ? `${formatNumber(meta.minutes, 0)} min` : 'N/D'}</span>
+                                                        </>
+                                                    )}
                                                 </span>
+                                            ) : (
+                                                <span className="map-table-capacity">{table.capacity} {table.capacity === 1 ? 'silla' : 'sillas'}</span>
                                             )}
                                         </span>
                                         {editing && <span className="map-resize-handle" role="button" aria-label={`Redimensionar mesa ${table.number}`} onPointerDown={(event) => beginInteraction(event, { kind: 'table', key: table.id }, 'RESIZE')} />}
@@ -633,8 +644,7 @@ export default function TableMap({
                                     <Armchair size={18} aria-hidden="true" />
                                     <div><strong>{selectedTable.capacity} {selectedTable.capacity === 1 ? 'silla' : 'sillas'} = {selectedTable.capacity} {selectedTable.capacity === 1 ? 'comensal' : 'comensales'}</strong><span>Relación automática según la capacidad de la mesa.</span></div>
                                 </div>
-                                <div className="inspector-field">
-                                    <label htmlFor="map-table-area">Salón</label>
+                                <Field label="Salón" htmlFor="map-table-area">
                                     <AppSelect<string>
                                         inputId="map-table-area"
                                         options={[{ value: '', label: 'Sin asignar' }, ...areas.map((area) => ({ value: areaKey(area), label: area.name }))]}
@@ -645,7 +655,7 @@ export default function TableMap({
                                             patchTable({ floorAreaId: area?.id ?? null, floorAreaClientKey: area?.id ? null : area?.clientKey ?? null });
                                         }}
                                     />
-                                </div>
+                                </Field>
                                 <SegmentedControl<'RECTANGLE' | 'SQUARE' | 'ROUND'>
                                     ariaLabel="Forma de la mesa"
                                     options={[{ value: 'RECTANGLE', label: 'Rectangular' }, { value: 'SQUARE', label: 'Cuadrada' }, { value: 'ROUND', label: 'Redonda' }]}
@@ -663,8 +673,7 @@ export default function TableMap({
                             <>
                                 <div className="inspector-heading"><Shapes size={20} /><div><strong>{selectedArea.name}</strong><span>Diseño del salón</span></div></div>
                                 <Field label="Nombre" htmlFor="map-area-name"><Input id="map-area-name" value={selectedArea.name} maxLength={100} onChange={(event) => patchArea({ name: event.target.value })} /></Field>
-                                <div className="inspector-field">
-                                    <label htmlFor="map-area-kind">Tipo</label>
+                                <Field label="Tipo" htmlFor="map-area-kind">
                                     <AppSelect<FloorAreaKind>
                                         inputId="map-area-kind"
                                         options={AREA_KIND_OPTIONS}
@@ -672,9 +681,8 @@ export default function TableMap({
                                         isClearable={false}
                                         onChange={(value) => value && patchArea({ kind: value })}
                                     />
-                                </div>
-                                <div className="inspector-field">
-                                    <label htmlFor="map-area-shape">Forma</label>
+                                </Field>
+                                <Field label="Forma" htmlFor="map-area-shape">
                                     <AppSelect<FloorAreaShape>
                                         inputId="map-area-shape"
                                         options={AREA_SHAPE_OPTIONS}
@@ -682,11 +690,14 @@ export default function TableMap({
                                         isClearable={false}
                                         onChange={(value) => value && patchArea({ mapShape: value })}
                                     />
-                                </div>
-                                <label>Color<input type="color" value={selectedArea.color || '#E4EEFF'} onChange={(event) => patchArea({ color: event.target.value })} /></label>
+                                </Field>
+                                <label className="inspector-color" htmlFor="map-area-color">
+                                    <span>Color</span>
+                                    <input id="map-area-color" type="color" value={selectedArea.color || AREA_COLORS[1]} onChange={(event) => patchArea({ color: event.target.value })} />
+                                </label>
                                 <div className="inspector-grid"><Field label="Ancho" htmlFor="map-field-3"><Input id="map-field-3" type="number" min="160" max="10000" value={selectedArea.mapWidth} onChange={(event) => patchArea({ mapWidth: Number(event.target.value) })} /></Field><Field label="Alto" htmlFor="map-field-4"><Input id="map-field-4" type="number" min="140" max="10000" value={selectedArea.mapHeight} onChange={(event) => patchArea({ mapHeight: Number(event.target.value) })} /></Field></div>
                                 <label><span className="label-with-icon"><RotateCw size={15} /> Rotación</span><input type="range" min="0" max="359" value={selectedArea.mapRotation} onChange={(event) => patchArea({ mapRotation: Number(event.target.value) })} /><output>{selectedArea.mapRotation}°</output></label>
-                                <Button variant="danger" className={styles.touch} disabled={areas.length === 1} onClick={removeSelectedArea}><Trash2 size={16} /> Eliminar salón</Button>
+                                <Button variant="danger" icon={Trash2} className={styles.touch} disabled={areas.length === 1} onClick={removeSelectedArea}>Eliminar salón</Button>
                             </>
                         ) : (
                             <>

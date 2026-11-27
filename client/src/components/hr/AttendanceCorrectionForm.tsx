@@ -1,5 +1,5 @@
-import { AppSelect, Button, Input, Textarea } from '@/ui';
-import { useState, type ReactNode } from 'react';
+import { AppSelect, Button, Field, Input, Textarea } from '@/ui';
+import { useState, type ReactNode, useId } from 'react';
 import { Pencil } from 'lucide-react';
 import HrModalFormShell from './HrModalFormShell';
 import type { HrNamedEntity, HrUserSummary } from '../../types/hr';
@@ -41,6 +41,7 @@ export default function AttendanceCorrectionForm({
   onCancel,
   notice,
 }: AttendanceCorrectionFormProps) {
+  const fid = useId();
   const [userId, setUserId] = useState(initialUserId ? String(initialUserId) : '');
   const [type, setType] = useState<HrCorrectionType>('ADD_PUNCH');
   const [requestedAction, setRequestedAction] = useState<HrAttendanceAction>('CHECK_IN');
@@ -77,14 +78,13 @@ export default function AttendanceCorrectionForm({
       footer={
         <>
           {onCancel && <Button type="button" variant="ghost" onClick={onCancel} disabled={saving}>Cancelar</Button>}
-          <Button variant="primary" type="submit" disabled={!online || saving || !reason.trim() || Boolean(users && !userId)}>{saving ? 'Enviando…' : 'Solicitar corrección'}</Button>
+          <Button loading={saving} variant="primary" type="submit" disabled={!online || saving || !reason.trim() || Boolean(users && !userId)}>Solicitar corrección</Button>
         </>
       }
     >
       {users && (
-        <label>
-          Usuario
-          <AppSelect<string>
+        <Field label="Usuario" htmlFor={`${fid}-usuario`}>
+          <AppSelect<string> inputId={`${fid}-usuario`}
             options={[
               { value: '', label: 'Seleccionar…' },
               ...users.map((user) => ({
@@ -96,11 +96,10 @@ export default function AttendanceCorrectionForm({
             onChange={(next) => setUserId(next ?? '')}
             isClearable={false}
           />
-        </label>
+        </Field>
       )}
-      <label>
-        Tipo de corrección
-        <AppSelect<string>
+      <Field label="Tipo de corrección" htmlFor={`${fid}-tipo-de-correccion`}>
+        <AppSelect<string> inputId={`${fid}-tipo-de-correccion`}
           options={[
             ...TYPE_OPTIONS.filter(
               (option) => option.value !== 'ASSIGN_BRANCH' || branches !== undefined
@@ -110,11 +109,10 @@ export default function AttendanceCorrectionForm({
           onChange={(next) => setType((next ?? '') as HrCorrectionType)}
           isClearable={false}
         />
-      </label>
+      </Field>
       {type === 'ADD_PUNCH' && (
-        <label>
-          Acción del marcaje
-          <AppSelect<string>
+        <Field label="Acción del marcaje" htmlFor={`${fid}-accion-del-marcaje`}>
+          <AppSelect<string> inputId={`${fid}-accion-del-marcaje`}
             options={[
               { value: 'CHECK_IN', label: 'Entrada' },
               { value: 'BREAK_START', label: 'Inicio de descanso' },
@@ -125,35 +123,32 @@ export default function AttendanceCorrectionForm({
             onChange={(next) => setRequestedAction((next ?? '') as HrAttendanceAction)}
             isClearable={false}
           />
-        </label>
+        </Field>
       )}
-      <label>
-        ID de marcaje afectado (si aplica)
-        <Input
+      <Field label="ID de marcaje afectado (si aplica)" htmlFor={`${fid}-id-de-marcaje-afectado`}>
+        <Input id={`${fid}-id-de-marcaje-afectado`}
           type="number"
           min="1"
           value={targetEventId}
           onChange={(event) => setTargetEventId(event.target.value)}
         />
-      </label>
+      </Field>
       {(type === 'ADD_PUNCH' || type === 'CHANGE_TIME') && (
         <>
-          <label>
-            Fecha y hora local solicitada
-            <Input
+          <Field label="Fecha y hora local solicitada" htmlFor={`${fid}-fecha-y-hora-local`}>
+            <Input id={`${fid}-fecha-y-hora-local`}
               type="datetime-local"
               value={requestedOccurredAt}
               onChange={(event) => setRequestedOccurredAt(event.target.value)}
               required
             />
-          </label>
+          </Field>
           <p className="hr-form-help">Zona enviada al servidor: {resolvedTimezone}</p>
         </>
       )}
       {type === 'ASSIGN_BRANCH' && (
-        <label>
-          Sucursal solicitada
-          <AppSelect<string>
+        <Field label="Sucursal solicitada" htmlFor={`${fid}-sucursal-solicitada`}>
+          <AppSelect<string> inputId={`${fid}-sucursal-solicitada`}
             options={[
               { value: '', label: 'Seleccionar…' },
               ...(branches ?? []).map((branch) => ({
@@ -165,18 +160,19 @@ export default function AttendanceCorrectionForm({
             onChange={(next) => setRequestedBranchId(next ?? '')}
             isClearable={false}
           />
-        </label>
+        </Field>
       )}
-      <label className="span-full">
-        Razón y evidencia operativa
-        <Textarea
-          rows={4}
-          maxLength={700}
-          value={reason}
-          onChange={(event) => setReason(event.target.value)}
-          required
-        />
-      </label>
+      <div className="span-full">
+        <Field label="Razón y evidencia operativa" htmlFor={`${fid}-razon-y-evidencia-operativa`}>
+          <Textarea id={`${fid}-razon-y-evidencia-operativa`}
+            rows={4}
+            maxLength={700}
+            value={reason}
+            onChange={(event) => setReason(event.target.value)}
+            required
+          />
+        </Field>
+      </div>
       <p className="hr-form-help span-full">
         La solicitud no reescribe historial: el servidor crea una corrección compensatoria con
         actor, versión y trazabilidad.

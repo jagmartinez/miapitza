@@ -4,8 +4,8 @@ import { useNavigate } from 'react-router-dom';
 import { purchaseOrdersAPI, autoPurchaseOrdersAPI, branchesAPI, suppliersAPI } from '../services/api';
 import api from '../services/api';
 import {
-    AppSelect, Badge, Button, Checkbox, DataTable, DateInput, Field, FormGrid, FormSection, FullScreenModal,
-    IconButton, Input, NumberInput, PageContent, PageHeader, SegmentedControl, StatCard, TableToolbar, Textarea,
+    AppSelect, Badge, Button, Checkbox, DataTable, DateInput, EmptyState, Field, FormGrid, FormSection, FullScreenModal, Skeleton,
+    IconButton, Input, NumberInput, PageContent, PageHeader, TableToolbar, Tabs, Textarea, Tooltip,
     formatMoney, formatNumber,
     type Column, LoadErrorState,
 } from '@/ui';
@@ -15,7 +15,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
 import { getUserRoleNames } from '../utils/authz';
-import { Plus, Eye, Zap, X, FileDown, FileText, DollarSign, Undo2, Pencil, PackageCheck } from 'lucide-react';
+import { Plus, Eye, Zap, FileDown, Download, DollarSign, RotateCcw, Trash2, Undo2, Pencil, PackageCheck, Search } from 'lucide-react';
 import type { CurrencySettings } from '../utils/currency';
 import { formatLocalDateInput } from '../utils/dateInput';
 import { getIdempotentAttempt, type IdempotentAttempt } from '../utils/idempotency';
@@ -24,7 +24,6 @@ import { getApiErrorMessage } from '../utils/apiError';
 import { BANK_OPTIONS } from '../constants/purchaseOrderOptions';
 import type { AutoPurchaseSuggestion, Branch, PurchaseOrder, PurchaseOrderPayment, Supplier } from '../types';
 import styles from './compras.module.css';
-import './purchase-legacy.css';
 
 type PoSuggestionRow = AutoPurchaseSuggestion & {
     unit?: string;
@@ -53,9 +52,9 @@ function toAutoPurchaseLine(suggestion: PoSuggestionRow) {
 function formatSuggestionQuantity(suggestion: PoSuggestionRow) {
     const purchaseQuantity = Number(suggestion.purchaseQuantity);
     if (Number.isFinite(purchaseQuantity) && purchaseQuantity > 0 && suggestion.purchaseUnit) {
-        return `${Number(purchaseQuantity.toFixed(3))} ${suggestion.purchaseUnit}`;
+        return `${formatNumber(purchaseQuantity)} ${suggestion.purchaseUnit}`;
     }
-    return `${Number(Number(suggestion.suggestedQuantity).toFixed(3))}${suggestion.unit ? ` ${suggestion.unit}` : ''}`;
+    return `${formatNumber(suggestion.suggestedQuantity)}${suggestion.unit ? ` ${suggestion.unit}` : ''}`;
 }
 
 interface PoSuggestionsData {
@@ -99,6 +98,7 @@ export default function PurchaseOrders() {
     const [loading, setLoading] = useState(true);
     const [ordersLoadError, setOrdersLoadError] = useState<string | null>(null);
     const [statusFilter, setStatusFilter] = useState('all');
+    const [paymentFilter, setPaymentFilter] = useState<'all' | 'due' | 'overdue'>('all');
     const [searchQuery, setSearchQuery] = useState('');
     const [showSuggestionsSidebar, setShowSuggestionsSidebar] = useState(false);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -266,7 +266,12 @@ export default function PurchaseOrders() {
         // balance stay visible outside the range; see purchaseOrderDateVisibility.
         const matchesDate = purchaseOrderDateVisibility(order, { startDate, endDate, statusFilter }).visible;
 
-        return matchesStatus && matchesSearch && matchesDate;
+        const owesSupplier = order.invoiceType === 'CREDIT' && order.paymentStatus !== 'PAID'
+            && order.status !== 'CANCELLED' && order.status !== 'DRAFT';
+        const matchesPayment = paymentFilter === 'all'
+            || (owesSupplier && (paymentFilter === 'due' || (!!order.paymentDueDate && new Date(order.paymentDueDate).getTime() < Date.now())));
+
+        return matchesStatus && matchesSearch && matchesDate && matchesPayment;
     });
 
 
@@ -500,26 +505,6 @@ export default function PurchaseOrders() {
     const symbol = settings.currency_symbol || 'C$';
     const money = (value: unknown) => formatMoney(value, symbol);
 
-    const pendingPaymentOrders = orders.filter(o =>
-        (o.status === 'RECEIVED' || o.status === 'PARTIALLY_RECEIVED') && o.invoiceType === 'CREDIT' && o.paymentStatus !== 'PAID'
-    );
-    const overduePayments = pendingPaymentOrders.filter(o => {
-        const days = getDaysRemaining(o.paymentDueDate);
-        return days !== null && days < 0;
-    });
-    const payableBalance = pendingPaymentOrders.reduce(
-        (sum, o) => sum + Math.max(0, purchaseOrderPayable(o) - (Number(o.paidAmount) || 0)), 0);
-    const mostOverdueOrder = [...overduePayments].sort(
-        (a, b) => (getDaysRemaining(a.paymentDueDate) ?? 0) - (getDaysRemaining(b.paymentDueDate) ?? 0))[0]
-        ?? pendingPaymentOrders[0];
-
-    const issuedOrders = orders.filter(o => o.status === 'ISSUED');
-    const committedAmount = issuedOrders.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
-    const issuedOverdue = issuedOrders.filter(o => {
-        const days = getDaysRemaining(o.paymentDueDate);
-        return days !== null && days < 0;
-    });
-
     const renderPaymentCell = (order: PurchaseOrder) => {
         // CASH is paid on delivery: nothing is settled before a receipt.
         if (order.invoiceType !== 'CREDIT') {
@@ -540,16 +525,16 @@ export default function PurchaseOrders() {
     };
 
     const orderColumns: Column<PurchaseOrder>[] = [
-        { key: 'id', header: 'Orden', width: '0.7fr', render: (o) => `#${o.id}` },
-        { key: 'supplier', header: 'Proveedor', width: '1.8fr', render: (o) => o.supplier?.name ?? 'N/D' },
-        { key: 'invoiceNumber', header: 'Nº Factura', width: '1fr', hideBelow: 'md', render: (o) => o.invoiceNumber || '-' },
-        { key: 'date', header: 'Fecha', width: '1fr', type: 'date' },
+        { key: 'id', header: 'Orden', render: (o) => `#${o.id}` },
+        { key: 'supplier', header: 'Proveedor', render: (o) => o.supplier?.name ?? 'N/D' },
+        { key: 'invoiceNumber', header: 'Nº Factura', hideBelow: 'md', render: (o) => o.invoiceNumber || '-' },
+        { key: 'date', header: 'Fecha', type: 'date' },
         {
-            key: 'invoiceType', header: 'Tipo', width: '0.8fr', hideBelow: 'lg',
+            key: 'invoiceType', header: 'Tipo', type: 'status', hideBelow: 'lg',
             render: (o) => <Badge tone={o.invoiceType === 'CREDIT' ? 'warning' : 'neutral'}>{o.invoiceType === 'CREDIT' ? 'Crédito' : 'Contado'}</Badge>,
         },
         {
-            key: 'total', header: `Total (${symbol})`, width: '1fr', type: 'money', accessor: (o) => Number(o.total) || 0,
+            key: 'total', header: `Total (${symbol})`, type: 'money', accessor: (o) => Number(o.total) || 0,
             render: (o) => (o.status === 'PARTIALLY_RECEIVED' ? (
                 <span className={styles.cellStack}>
                     <span>{formatNumber(Number(o.total) || 0)}</span>
@@ -557,53 +542,55 @@ export default function PurchaseOrders() {
                 </span>
             ) : formatNumber(Number(o.total) || 0)),
         },
-        { key: 'payment', header: 'Pago', width: '1.4fr', hideBelow: 'lg', render: renderPaymentCell },
+        { key: 'payment', header: 'Pago', type: 'status', hideBelow: 'lg', render: renderPaymentCell },
         {
-            key: 'status', header: 'Estado', width: '0.9fr',
+            key: 'status', header: 'Estado', type: 'status',
             render: (o) => (
                 <span className={styles.cellStack}>
                     <Badge tone={STATUS_TONE[o.status] ?? 'neutral'} dot>{STATUS_LABEL[o.status] ?? o.status}</Badge>
                     {purchaseOrderDateVisibility(o, { startDate, endDate, statusFilter }).outOfRange && (
-                        <span className={styles.muted} title="Fuera del rango de fechas: se muestra porque tiene saldo pendiente de recibir">
-                            Saldo pendiente · fuera del rango
-                        </span>
+                        <Tooltip label="Fuera del rango de fechas: se muestra porque tiene saldo pendiente de recibir">
+                            <span className={styles.muted} tabIndex={0}>Saldo pendiente · fuera del rango</span>
+                        </Tooltip>
                     )}
                 </span>
             ),
         },
         {
-            key: 'actions', header: 'Acciones', width: '10rem', type: 'actions',
+            key: 'actions', header: 'Acciones', width: '208px', type: 'actions',
             render: (order) => (
                 <span className={styles.rowActions}>
-                    {canManagePurchaseOrders && order.invoiceType === 'CREDIT' && (order.status === 'RECEIVED' || order.status === 'PARTIALLY_RECEIVED') && (
-                        <IconButton
-                            icon={DollarSign} size="sm"
-                            label={order.paymentStatus === 'PAID' ? 'Ver historial de abonos' : 'Registrar pago / abono'}
-                            onClick={() => handleOpenPayment(order)}
-                        />
-                    )}
                     {canManagePurchaseOrders && (
                         <IconButton
                             icon={order.status === 'RECEIVED' || order.status === 'PARTIALLY_RECEIVED' ? Eye : Pencil} size="sm"
+                            tooltip={order.status === 'RECEIVED' || order.status === 'PARTIALLY_RECEIVED' ? 'Ver detalle' : 'Editar'}
                             label={order.status === 'RECEIVED' ? 'Ver detalles' : order.status === 'PARTIALLY_RECEIVED' ? 'Ver / recibir saldo' : 'Editar'}
                             onClick={() => handleOpenForm(order.id)}
                         />
                     )}
+                    {canManagePurchaseOrders && order.invoiceType === 'CREDIT' && (order.status === 'RECEIVED' || order.status === 'PARTIALLY_RECEIVED') && (
+                        <IconButton
+                            icon={DollarSign} size="sm"
+                            tooltip={order.paymentStatus === 'PAID' ? 'Historial' : 'Registrar pago'}
+                            label={order.paymentStatus === 'PAID' ? 'Ver historial de abonos' : 'Registrar pago / abono'}
+                            onClick={() => handleOpenPayment(order)}
+                        />
+                    )}
                     {canManagePurchaseOrders && order.status === 'PARTIALLY_RECEIVED' && (
                         <IconButton
-                            icon={PackageCheck} size="sm"
+                            icon={PackageCheck} size="sm" tooltip="Cerrar saldo"
                             label={`Cerrar saldo de la orden ${order.id} (abandonar lo pendiente)`}
                             onClick={() => void handleCloseRemaining(order)}
                         />
                     )}
                     {order.invoicePdf && (
-                        <IconButton icon={FileText} size="sm" label="Ver Factura PDF" onClick={() => void handleDownloadInvoice(order)} />
-                    )}
-                    {canDeletePurchaseOrders && order.status === 'DRAFT' && (
-                        <IconButton icon={X} size="sm" label="Eliminar borrador" onClick={() => void handleDeleteOrder(order.id)} />
+                        <IconButton icon={Download} size="sm" tooltip="Descargar factura" label="Ver Factura PDF" onClick={() => void handleDownloadInvoice(order)} />
                     )}
                     {canDeletePurchaseOrders && (order.status === 'RECEIVED' || order.status === 'PARTIALLY_RECEIVED') && (
-                        <IconButton icon={Undo2} size="sm" label="Revertir recepción" onClick={() => void handleReverseReceipt(order)} />
+                        <IconButton icon={RotateCcw} size="sm" tone="danger" tooltip="Revertir" label="Revertir recepción" onClick={() => void handleReverseReceipt(order)} />
+                    )}
+                    {canDeletePurchaseOrders && order.status === 'DRAFT' && (
+                        <IconButton icon={Trash2} size="sm" tone="danger" tooltip="Eliminar" label="Eliminar borrador" onClick={() => void handleDeleteOrder(order.id)} />
                     )}
                 </span>
             ),
@@ -622,19 +609,18 @@ export default function PurchaseOrders() {
                 />
             ),
         },
-        { key: 'product', header: 'Producto', width: '2fr', render: (s) => s.productName?.trim() || `Producto #${s.productId}` },
-        { key: 'warehouse', header: 'Bodega', width: '1.2fr', hideBelow: 'md', render: (s) => s.warehouseName || 'Sin bodega' },
+        { key: 'product', header: 'Producto', render: (s) => s.productName?.trim() || `Producto #${s.productId}` },
+        { key: 'warehouse', header: 'Bodega', hideBelow: 'md', render: (s) => s.warehouseName || 'Sin bodega' },
         {
-            key: 'priority', header: 'Prioridad', width: '0.9fr',
+            key: 'priority', header: 'Prioridad', type: 'status',
             render: (s) => <Badge tone={s.priority === 'URGENT' ? 'danger' : 'neutral'}>{s.priority === 'URGENT' ? 'Urgente' : 'Normal'}</Badge>,
         },
-        { key: 'current', header: 'Actual', width: '1fr', type: 'qty', hideBelow: 'md', render: (s) => `${formatNumber(s.currentStock || 0)} ${s.unit || ''}`.trim() },
-        { key: 'min', header: 'Mín', width: '1fr', type: 'qty', hideBelow: 'lg', render: (s) => `${formatNumber(s.minStock || 0)} ${s.unit || ''}`.trim() },
-        { key: 'suggested', header: 'Sugerido', width: '1fr', type: 'qty', render: (s) => formatSuggestionQuantity(s) },
-        { key: 'cost', header: `Estimado (${symbol})`, width: '1fr', type: 'money', accessor: (s) => Number(s.estimatedCost) || 0 },
+        { key: 'current', header: 'Actual', type: 'qty', hideBelow: 'md', render: (s) => `${formatNumber(s.currentStock || 0)} ${s.unit || ''}`.trim() },
+        { key: 'min', header: 'Mín', type: 'qty', hideBelow: 'lg', render: (s) => `${formatNumber(s.minStock || 0)} ${s.unit || ''}`.trim() },
+        { key: 'suggested', header: 'Sugerido', type: 'qty', render: (s) => formatSuggestionQuantity(s) },
+        { key: 'cost', header: `Estimado (${symbol})`, type: 'money', accessor: (s) => Number(s.estimatedCost) || 0 },
     ];
 
-    if (loading) return <div role="status">Cargando órdenes de compra...</div>;
 
     const balance = paymentModalOrder ? purchaseOrderPayable(paymentModalOrder) - Number(paymentModalOrder.paidAmount || 0) : 0;
     const paymentFormAmount = paymentForm.amount === '' ? null : Number(paymentForm.amount);
@@ -645,88 +631,75 @@ export default function PurchaseOrders() {
                 title="Órdenes de Compra"
                 description="Compras a proveedores, recepción y pagos."
                 actions={(
-                    <>
-                        <Button icon={Zap} onClick={loadAutoSuggestions} disabled={loadingSuggestions || !canManagePurchaseOrders}>
-                            {loadingSuggestions ? 'Cargando...' : 'Auto-Generar'}
-                        </Button>
-                        <Button icon={FileDown} onClick={() => setIsImportSidebarOpen(true)} disabled={!canManagePurchaseOrders}>
-                            Carga Masiva
-                        </Button>
-                        <Button variant="primary" icon={Plus} onClick={() => handleOpenForm()} disabled={!canManagePurchaseOrders}>
-                            Nueva orden
-                        </Button>
-                    </>
+                    <Button variant="primary" icon={Plus} onClick={() => handleOpenForm()} disabled={!canManagePurchaseOrders}>
+                        Nueva orden
+                    </Button>
                 )}
             />
 
             {ordersLoadError && <LoadErrorState message={ordersLoadError} onRetry={() => { void loadOrders(); }} />}
 
-            {(orders.length > 0 || !ordersLoadError) && (
-                <div className={styles.kpiGrid}>
-                    <StatCard
-                        label="Comprometido sin recibir"
-                        value={money(committedAmount)}
-                        tone={issuedOverdue.length > 0 ? 'warning' : 'neutral'}
-                        context={`${issuedOrders.length} órdenes emitidas · ${issuedOverdue.length} con fecha de vencimiento ya pasada`}
-                        action={issuedOrders.length > 0 ? { label: 'Ver emitidas', onClick: () => setStatusFilter('ISSUED') } : undefined}
-                    />
-                    <StatCard
-                        label="Por pagar a proveedores"
-                        value={money(payableBalance)}
-                        tone={overduePayments.length > 0 ? 'danger' : 'neutral'}
-                        context={pendingPaymentOrders.length === 0
-                            ? 'Sin facturas a crédito pendientes de pago'
-                            : `${overduePayments.length} vencidas de ${pendingPaymentOrders.length} facturas a crédito recibidas`}
-                        action={canManagePurchaseOrders && mostOverdueOrder
-                            ? { label: `Registrar pago OC #${mostOverdueOrder.id}`, onClick: () => { void handleOpenPayment(mostOverdueOrder); } }
-                            : undefined}
-                    />
-                </div>
-            )}
+            <Tabs
+                ariaLabel="Filtrar por estado de la orden"
+                active={statusFilter}
+                onChange={setStatusFilter}
+                tabs={STATUS_OPTIONS.map(({ value, label }) => ({
+                    id: value,
+                    label,
+                    badge: ordersLoadError ? undefined : value === 'all' ? orders.length : orders.filter((order) => order.status === value).length,
+                }))}
+            />
+
+            <TableToolbar
+                actions={(
+                    <>
+                        {(startDate || endDate) && (
+                            <Button variant="ghost" onClick={() => { setStartDate(''); setEndDate(''); }}>
+                                Quitar fechas
+                            </Button>
+                        )}
+                        <Button icon={Zap} onClick={loadAutoSuggestions} loading={loadingSuggestions} disabled={!canManagePurchaseOrders}>
+                            Auto-Generar
+                        </Button>
+                        <Button icon={FileDown} onClick={() => setIsImportSidebarOpen(true)} disabled={!canManagePurchaseOrders}>
+                            Carga Masiva
+                        </Button>
+                    </>
+                )}
+            >
+                <Input
+                    id="po-search"
+                    type="search"
+                    aria-label="Buscar orden"
+                    placeholder="Buscar por ID, proveedor o factura..."
+                    prefix={<Search size={14} aria-hidden="true" />}
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                />
+                <AppSelect
+                    inputId="po-payment-filter"
+                    aria-label="Filtrar por pago a proveedor"
+                    options={[
+                        { value: 'all', label: 'Pago: todos' },
+                        { value: 'due', label: 'Por pagar (crédito)' },
+                        { value: 'overdue', label: 'Vencidas' },
+                    ]}
+                    value={paymentFilter}
+                    onChange={(v) => setPaymentFilter((v || 'all') as 'all' | 'due' | 'overdue')}
+                />
+                <DateInput id="po-from" aria-label="Desde" title="Desde" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+                <DateInput id="po-to" aria-label="Hasta" title="Hasta" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+            </TableToolbar>
 
             <DataTable
                 ariaLabel="Órdenes de compra"
                 columns={orderColumns}
                 rows={filteredOrders}
                 rowKey={(o) => o.id}
-                resetKey={`${statusFilter}|${searchQuery}|${startDate}|${endDate}`}
+                loading={loading}
+                resetKey={`${statusFilter}|${paymentFilter}|${searchQuery}|${startDate}|${endDate}`}
                 onRowClick={canManagePurchaseOrders ? (o) => handleOpenForm(o.id) : undefined}
                 empty="No se encontraron órdenes de compra"
-                toolbar={(
-                    <TableToolbar>
-                        <div className={styles.filters}>
-                            <SegmentedControl
-                                ariaLabel="Estado de la orden"
-                                options={STATUS_OPTIONS}
-                                value={statusFilter}
-                                onChange={setStatusFilter}
-                            />
-                            <div className={styles.filterField}>
-                                <label htmlFor="po-from">Desde</label>
-                                <DateInput id="po-from" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
-                            </div>
-                            <div className={styles.filterField}>
-                                <label htmlFor="po-to">Hasta</label>
-                                <DateInput id="po-to" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
-                            </div>
-                            {(startDate || endDate) && (
-                                <Button variant="ghost" size="sm" onClick={() => { setStartDate(''); setEndDate(''); }}>
-                                    Quitar fechas
-                                </Button>
-                            )}
-                            <div className={`${styles.filterField} ${styles.search}`}>
-                                <label htmlFor="po-search">Buscar</label>
-                                <Input
-                                    id="po-search"
-                                    type="search"
-                                    placeholder="Buscar por ID, proveedor o factura..."
-                                    value={searchQuery}
-                                    onChange={(e) => setSearchQuery(e.target.value)}
-                                />
-                            </div>
-                        </div>
-                    </TableToolbar>
-                )}
             />
 
             <FullScreenModal
@@ -744,9 +717,10 @@ export default function PurchaseOrders() {
                             variant="primary"
                             type="submit"
                             form="po-suggestions-form"
-                            disabled={creatingAutoPurchaseOrder || selectedSuggestions.length === 0}
+                            loading={creatingAutoPurchaseOrder}
+                            disabled={selectedSuggestions.length === 0}
                         >
-                            {creatingAutoPurchaseOrder ? 'Creando...' : 'Crear borrador'}
+                            Crear borrador
                         </Button>
                     </>
                 )}
@@ -784,21 +758,23 @@ export default function PurchaseOrders() {
                                 resetKey={suggestionSearch}
                                 empty="No hay sugerencias que coincidan con la búsqueda."
                                 toolbar={(
-                                    <TableToolbar>
-                                        <div className={styles.filters}>
-                                            <div className={`${styles.filterField} ${styles.search}`}>
-                                                <label htmlFor="po-suggestion-search">Buscar</label>
-                                                <Input
-                                                    id="po-suggestion-search"
-                                                    type="search"
-                                                    placeholder="Buscar producto o almacén..."
-                                                    value={suggestionSearch}
-                                                    onChange={(e) => setSuggestionSearch(e.target.value)}
-                                                />
-                                            </div>
-                                            <Button variant="ghost" onClick={handleSelectUrgentSuggestions}>Seleccionar urgentes</Button>
-                                            <Button variant="ghost" onClick={() => setSelectedSuggestionKeys({})}>Limpiar</Button>
-                                        </div>
+                                    <TableToolbar
+                                        actions={(
+                                            <>
+                                                <Button variant="ghost" onClick={handleSelectUrgentSuggestions}>Seleccionar urgentes</Button>
+                                                <Button variant="ghost" onClick={() => setSelectedSuggestionKeys({})}>Limpiar</Button>
+                                            </>
+                                        )}
+                                    >
+                                        <Input
+                                            id="po-suggestion-search"
+                                            type="search"
+                                            aria-label="Buscar sugerencia"
+                                            placeholder="Buscar producto o almacén..."
+                                            prefix={<Search size={14} aria-hidden="true" />}
+                                            value={suggestionSearch}
+                                            onChange={(e) => setSuggestionSearch(e.target.value)}
+                                        />
                                     </TableToolbar>
                                 )}
                             />
@@ -837,21 +813,40 @@ export default function PurchaseOrders() {
                 ]}
                 activeTab={paymentTab}
                 onTabChange={(id) => setPaymentTab(id as 'register' | 'history')}
-                footer={({ requestClose }) => (
-                    <>
-                        <Button onClick={requestClose}>Cancelar</Button>
-                        {paymentTab === 'register' && paymentModalOrder && (
-                            <Button
-                                variant="primary"
-                                loading={savingPayment}
-                                disabled={savingPayment || balance <= 0}
-                                onClick={handleSubmitPayment}
-                            >
-                                {savingPayment ? 'Registrando...' : 'Registrar Pago'}
-                            </Button>
-                        )}
-                    </>
-                )}
+                footer={({ requestClose }) => {
+                    const reversalPayment = paymentTab === 'history' && reversalPaymentId !== null
+                        ? paymentHistory.find((p) => p.id === reversalPaymentId) ?? null
+                        : null;
+                    return (
+                        <>
+                            {reversalPayment ? (
+                                <Button onClick={() => setReversalPaymentId(null)} disabled={reversingPayment}>Cancelar reverso</Button>
+                            ) : (
+                                <Button onClick={requestClose}>Cancelar</Button>
+                            )}
+                            {paymentTab === 'register' && paymentModalOrder && (
+                                <Button
+                                    variant="primary"
+                                    loading={savingPayment}
+                                    disabled={balance <= 0}
+                                    onClick={handleSubmitPayment}
+                                >
+                                    Registrar Pago
+                                </Button>
+                            )}
+                            {reversalPayment && (
+                                <Button
+                                    variant="danger"
+                                    loading={reversingPayment}
+                                    disabled={!reversalReason.trim()}
+                                    onClick={() => handleReversePayment(reversalPayment)}
+                                >
+                                    Confirmar reverso
+                                </Button>
+                            )}
+                        </>
+                    );
+                }}
             >
                 {paymentModalOrder && (
                     <div className={styles.stack}>
@@ -928,9 +923,12 @@ export default function PurchaseOrders() {
                         ) : (
                             <FormSection title="Abonos registrados">
                                 {loadingPaymentHistory ? (
-                                    <p className={styles.muted}>Cargando abonos...</p>
+                                    <div className={styles.stack} role="status" aria-label="Cargando abonos...">
+                                        <Skeleton height={56} />
+                                        <Skeleton height={56} />
+                                    </div>
                                 ) : paymentHistory.length === 0 ? (
-                                    <p className={styles.muted}>Sin abonos registrados para esta orden.</p>
+                                    <EmptyState title="Sin abonos registrados para esta orden." />
                                 ) : (
                                     <div>
                                         {paymentHistory.map((payment) => (
@@ -953,7 +951,7 @@ export default function PurchaseOrders() {
                                                 {canDeletePurchaseOrders && payment.status !== 'REVERSED' && reversalPaymentId !== payment.id && (
                                                     <div>
                                                         <Button
-                                                            size="sm" icon={Undo2}
+                                                            variant="ghost" icon={Undo2}
                                                             onClick={() => { setReversalPaymentId(payment.id); setReversalReason(''); }}
                                                         >
                                                             Revertir abono
@@ -961,24 +959,21 @@ export default function PurchaseOrders() {
                                                     </div>
                                                 )}
                                                 {reversalPaymentId === payment.id && (
-                                                    <div className={styles.stack}>
+                                                    <Field
+                                                        label="Motivo del reverso"
+                                                        htmlFor={`payment-reversal-reason-${payment.id}`}
+                                                        hint="Obligatorio. Confirma el reverso con el botón del pie."
+                                                        required
+                                                    >
                                                         <Textarea
-                                                            aria-label="Motivo del reverso"
+                                                            id={`payment-reversal-reason-${payment.id}`}
                                                             rows={2}
                                                             value={reversalReason}
                                                             onChange={(event) => setReversalReason(event.target.value)}
                                                             placeholder="Motivo obligatorio del reverso"
                                                             disabled={reversingPayment}
                                                         />
-                                                        <div className={styles.inline}>
-                                                            <Button variant="ghost" onClick={() => setReversalPaymentId(null)} disabled={reversingPayment}>
-                                                                Cancelar
-                                                            </Button>
-                                                            <Button variant="danger" onClick={() => handleReversePayment(payment)} disabled={reversingPayment || !reversalReason.trim()}>
-                                                                {reversingPayment ? 'Revirtiendo...' : 'Confirmar reverso'}
-                                                            </Button>
-                                                        </div>
-                                                    </div>
+                                                    </Field>
                                                 )}
                                             </div>
                                         ))}

@@ -9,8 +9,6 @@ describe('shared dialog foundation', () => {
     for (const path of [
       '../ui/overlays/FullScreenModal.tsx',
       '../ui/overlays/ConfirmDialog.tsx',
-      './PaymentModal.tsx',
-      './NumericKeypad.tsx',
     ]) {
       const source = read(path);
       expect(source, path).toContain('createPortal');
@@ -36,8 +34,9 @@ describe('shared dialog foundation', () => {
     const payment = read('./PaymentModal.tsx');
     expect(source).toContain("closest<HTMLElement>('[role=\"dialog\"]')");
     expect(source).toContain('setPortalTarget(dialog ?? document.body)');
-    expect(payment).toContain('ref={dialogRef}\n            className="payment-overlay"');
-    expect(payment).not.toContain('ref={dialogRef}\n                className={`payment-dialog');
+    // El cobro se monta en FullScreenModal: sin portal ni diálogo propio.
+    expect(payment).toContain('<FullScreenModal');
+    expect(payment).not.toContain('createPortal');
   });
 
   it('associates select validation errors with the accessible combobox', () => {
@@ -59,7 +58,7 @@ describe('shared dialog foundation', () => {
     expect(tokens).toContain('--dialog-content-bg: var(--ui-surface)');
     expect(tokens).toContain('--dialog-header-bg: var(--ui-surface)');
     expect(tokens).toContain('--dialog-accent: var(--ui-primary)');
-    expect(payment).toContain('var(--dialog-panel-bg');
+    expect(payment).not.toContain('var(--dialog-');
     for (const stylesheet of [payment]) {
       expect(stylesheet).not.toContain('linear-gradient');
       expect(stylesheet).not.toContain('radial-gradient');

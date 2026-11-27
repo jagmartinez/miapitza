@@ -2,13 +2,13 @@ import { useState, useEffect } from 'react';
 import { getApiErrorMessage } from '../utils/apiError';
 import { notifyError } from '../services/notify';
 import { companiesAPI } from '../services/api';
-import { Plus, Building2, Edit2, CheckCircle, XCircle, FileText, Search } from 'lucide-react';
+import { Plus, Building2, Pencil, Power, FileText, Search } from 'lucide-react';
 import { useAppToast } from '../context/ToastContext';
 import { resolveAssetUrl } from '../utils/assets';
 import styles from './catalog.module.css';
 import {
     AppSelect, Badge, Button, DataTable, EmptyState, Field, FormGrid, FormSection, FullScreenModal, IconButton, Input,
-    PageContent, PageHeader, SegmentedControl, TableToolbar, Textarea, type Column,
+    PageContent, PageHeader, TableToolbar, Tabs, Textarea, type Column,
 } from '@/ui';
 
 type StatusFilter = 'all' | 'active' | 'inactive';
@@ -60,6 +60,7 @@ export default function Companies() {
     const { error: showError } = useAppToast();
     const [companies, setCompanies] = useState<Company[]>([]);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
     const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
     const [search, setSearch] = useState('');
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -73,10 +74,12 @@ export default function Companies() {
 
     const loadCompanies = async () => {
         try {
+            setLoadError(null);
             const response = await companiesAPI.getAll();
             setCompanies(response.data.data);
         } catch (error) {
             notifyError(error, 'No se pudieron cargar las empresas');
+            setLoadError(getApiErrorMessage(error, 'No se pudieron cargar las empresas'));
         } finally {
             setLoading(false);
         }
@@ -174,18 +177,22 @@ export default function Companies() {
         {
             key: 'status',
             header: 'Estado',
+            type: 'status',
             render: (c) => <Badge tone={c.active ? 'success' : 'neutral'} dot>{c.active ? 'Activa' : 'Inactiva'}</Badge>
         },
         {
             key: 'actions',
             header: 'Acciones',
             type: 'actions',
+            width: '100px',
             render: (c) => (
                 <div className={styles.rowActions}>
-                    <IconButton size="sm" icon={Edit2} label={`Editar ${c.name}`} onClick={() => openModal(c)} />
+                    <IconButton size="sm" icon={Pencil} label={`Editar ${c.name}`} tooltip="Editar" onClick={() => openModal(c)} />
                     <IconButton
                         size="sm"
-                        icon={c.active ? XCircle : CheckCircle}
+                        icon={Power}
+                        tone={c.active ? 'danger' : 'primary'}
+                        tooltip={c.active ? 'Desactivar' : 'Activar'}
                         label={`${c.active ? 'Desactivar' : 'Activar'} ${c.name}`}
                         onClick={() => toggleActive(c)}
                     />
@@ -198,12 +205,24 @@ export default function Companies() {
         <PageContent>
             <PageHeader
                 title="Empresas"
-                description={`${companies.filter((c) => c.active).length} activas · ${companies.length} registradas`}
+                description="Datos legales y de contacto de cada empresa"
                 actions={(
                     <Button variant="primary" icon={Plus} onClick={() => openModal()}>
                         Nueva empresa
                     </Button>
                 )}
+            />
+
+            <Tabs
+                ariaLabel="Filtrar empresas por estado"
+                active={statusFilter}
+                onChange={(id) => setStatusFilter(id as StatusFilter)}
+                tabs={STATUS_OPTIONS.map((o) => ({
+                    id: o.value,
+                    label: o.label,
+                    badge: o.value === 'all' ? companies.length
+                        : companies.filter((c) => (o.value === 'active' ? c.active : !c.active)).length,
+                }))}
             />
 
             <DataTable<Company>
@@ -212,6 +231,8 @@ export default function Companies() {
                 rowKey={(c) => c.id}
                 columns={columns}
                 loading={loading}
+                error={loadError}
+                onRetry={() => { setLoading(true); void loadCompanies(); }}
                 resetKey={`${statusFilter}|${q}`}
                 onRowClick={(c) => openModal(c)}
                 empty={companies.length === 0 ? (
@@ -231,7 +252,6 @@ export default function Companies() {
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
                         />
-                        <SegmentedControl ariaLabel="Estado" options={STATUS_OPTIONS} value={statusFilter} onChange={setStatusFilter} />
                     </TableToolbar>
                 )}
             />

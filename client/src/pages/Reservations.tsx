@@ -1,11 +1,10 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Calendar, Users, Phone, Plus, CheckCircle, XCircle, ChevronLeft, ChevronRight, Edit2, UserX } from 'lucide-react';
+import { useState, useEffect, useCallback, type ReactNode } from 'react';
+import { Calendar, CalendarDays, Users, Phone, Plus, CheckCircle2, Ban, ChevronLeft, ChevronRight, Pencil, UserX, Search, Table2 } from 'lucide-react';
 import {
     AppSelect, Badge, Button, DataTable, DateInput, EmptyState, Field, FormGrid, FormSection, FullScreenModal,
-    IconButton, Input, NumberInput, PageContent, PageHeader, SegmentedControl, Textarea,
-    type Column, type Opt, type Tone, LoadErrorState,
+    IconButton, Input, LoadErrorState, NumberInput, PageContent, PageHeader, SegmentedControl, TableToolbar, Tabs, Textarea,
+    type Column, type Opt, type Tone,
 } from '@/ui';
-import SalonCards from '../components/SalonCards';
 import { branchesAPI, reservationsAPI } from '../services/api';
 import { useAuth } from '../hooks/useAuth';
 import { getUserRoleNames } from '../utils/authz';
@@ -260,17 +259,6 @@ export default function Reservations() {
         }
     };
 
-    const getStatusColor = (status: string) => {
-        switch (status) {
-            case 'PENDING': return 'status-pending';
-            case 'CONFIRMED': return 'status-confirmed';
-            case 'COMPLETED': return 'status-completed';
-            case 'CANCELLED': return 'status-cancelled';
-            case 'NO_SHOW': return 'status-cancelled';
-            default: return '';
-        }
-    };
-
     const getStatusTone = (status: string): Tone => {
         switch (status) {
             case 'CONFIRMED': return 'success';
@@ -445,20 +433,22 @@ export default function Reservations() {
         }
     };
 
-    if (loading && reservations.length === 0) {
-        return <div className="reservations-loading">Cargando reservaciones...</div>;
-    }
-
     const { daysInMonth, startingDayOfWeek, year, month } = getDaysInMonth(currentMonth);
 
-    const statusSegments: { value: string; label: string }[] = [
-        { value: 'all', label: 'Todas' },
-        { value: 'PENDING', label: 'Pendientes' },
-        { value: 'CONFIRMED', label: 'Confirmadas' },
-        { value: 'COMPLETED', label: 'Completadas' },
-        { value: 'CANCELLED', label: 'Canceladas' },
-        { value: 'NO_SHOW', label: 'No asistió' },
-    ];
+    const statusTabs = ([
+        ['all', 'Todas'],
+        ['PENDING', 'Pendientes'],
+        ['CONFIRMED', 'Confirmadas'],
+        ['COMPLETED', 'Completadas'],
+        ['CANCELLED', 'Canceladas'],
+        ['NO_SHOW', 'No asistió'],
+    ] as const).map(([id, label]) => ({
+        id,
+        label,
+        // Sin datos fiables (carga inicial o error) no se muestra 0: el conteo es desconocido.
+        badge: loading && reservations.length === 0 || loadError ? undefined
+            : id === 'all' ? reservations.length : reservations.filter((r) => r.status === id).length,
+    }));
     const branchOptions: Opt<number>[] = branches.map((branch) => ({ value: branch.id, label: branch.name }));
     const reservationStatusOptions: Opt<Reservation['status']>[] = editingReservation
         ? ([
@@ -473,11 +463,31 @@ export default function Reservations() {
         }))
         : [];
 
+    // Solo las reservaciones pendientes se editan desde el calendario.
+    const calendarItem = (res: Reservation, className: string, children: ReactNode) => {
+        const summary = `${res.customerName} - ${formatTime(res.date)} - ${res.peopleCount} personas - ${getStatusText(res.status)}`;
+        return res.status === 'PENDING' ? (
+            <button
+                key={res.id}
+                type="button"
+                className={`${className} res-item`}
+                data-status={res.status}
+                title={summary}
+                onClick={() => handleOpenSidebar(res)}
+            >
+                {children}
+            </button>
+        ) : (
+            <div key={res.id} className={`${className} res-item`} data-status={res.status} title={summary}>
+                {children}
+            </div>
+        );
+    };
+
     const columns: Column<Reservation>[] = [
         {
             key: 'customer',
             header: 'Cliente',
-            width: '1fr',
             render: (r) => (
                 <span>
                     <strong>{r.customerName}</strong>
@@ -485,33 +495,32 @@ export default function Reservations() {
                 </span>
             ),
         },
-        { key: 'people', header: 'Personas', width: '1fr', type: 'number', decimals: 0, accessor: (r) => r.peopleCount },
-        { key: 'table', header: 'Mesa', width: '1.2fr', render: (r) => r.table?.number || 'Sin asignar' },
-        { key: 'date', header: 'Fecha y hora', width: '2.3fr', render: (r) => `${formatDate(r.date)} · ${formatTime(r.date)}` },
-        { key: 'email', header: 'Email', width: '1fr', hideBelow: 'lg', render: (r) => r.email || '-' },
-        { key: 'status', header: 'Estado', width: '1.5fr', type: 'status', render: (r) => <Badge tone={getStatusTone(r.status)} dot>{getStatusText(r.status)}</Badge> },
+        { key: 'people', header: 'Personas', type: 'qty', decimals: 0, accessor: (r) => r.peopleCount },
+        { key: 'table', header: 'Mesa', render: (r) => r.table?.number || 'Sin asignar' },
+        { key: 'date', header: 'Fecha', type: 'date', render: (r) => formatDate(r.date) },
+        { key: 'time', header: 'Hora', type: 'time', render: (r) => formatTime(r.date) },
+        { key: 'email', header: 'Email', hideBelow: 'lg', render: (r) => r.email || '-' },
+        { key: 'status', header: 'Estado', type: 'status', render: (r) => <Badge tone={getStatusTone(r.status)} dot>{getStatusText(r.status)}</Badge> },
         {
             key: 'actions',
             header: 'Acciones',
-            width: '1.7fr',
             type: 'actions',
             render: (r) => (
                 <>
+                    {canManageReservations && (r.status === 'PENDING' || r.status === 'CONFIRMED') && (
+                        <IconButton size="sm" icon={Pencil} tooltip="Editar" label={`Editar reservación de ${r.customerName}`} onClick={() => handleOpenSidebar(r)} />
+                    )}
                     {canManageReservations && r.status === 'PENDING' && (
-                        <>
-                            <IconButton icon={CheckCircle} label={`Confirmar reservación de ${r.customerName}`} onClick={() => void handleUpdateStatus(r.id, 'CONFIRMED')} />
-                            <IconButton icon={XCircle} label={`Cancelar reservación de ${r.customerName}`} onClick={() => void handleUpdateStatus(r.id, 'CANCELLED')} />
-                        </>
+                        <IconButton size="sm" icon={CheckCircle2} tone="primary" tooltip="Confirmar" label={`Confirmar reservación de ${r.customerName}`} onClick={() => void handleUpdateStatus(r.id, 'CONFIRMED')} />
                     )}
                     {canManageReservations && r.status === 'CONFIRMED' && (
                         <>
-                            <IconButton icon={Users} label={`Completar reservación de ${r.customerName}`} onClick={() => void handleUpdateStatus(r.id, 'COMPLETED')} />
-                            <IconButton icon={UserX} label={`Marcar no asistió a ${r.customerName}`} onClick={() => void handleUpdateStatus(r.id, 'NO_SHOW')} />
-                            <IconButton icon={XCircle} label={`Cancelar reservación de ${r.customerName}`} onClick={() => void handleUpdateStatus(r.id, 'CANCELLED')} />
+                            <IconButton size="sm" icon={CheckCircle2} tone="primary" tooltip="Completar" label={`Completar reservación de ${r.customerName}`} onClick={() => void handleUpdateStatus(r.id, 'COMPLETED')} />
+                            <IconButton size="sm" icon={UserX} tooltip="No asistió" label={`Marcar no asistió a ${r.customerName}`} onClick={() => void handleUpdateStatus(r.id, 'NO_SHOW')} />
                         </>
                     )}
                     {canManageReservations && (r.status === 'PENDING' || r.status === 'CONFIRMED') && (
-                        <IconButton icon={Edit2} label={`Editar reservación de ${r.customerName}`} onClick={() => handleOpenSidebar(r)} />
+                        <IconButton size="sm" icon={Ban} tone="danger" tooltip="Cancelar" label={`Cancelar reservación de ${r.customerName}`} onClick={() => void handleUpdateStatus(r.id, 'CANCELLED')} />
                     )}
                 </>
             ),
@@ -527,7 +536,8 @@ export default function Reservations() {
                     <>
                         <SegmentedControl
                             ariaLabel="Vista de reservaciones"
-                            options={[{ value: 'table', label: 'Tabla' }, { value: 'calendar', label: 'Calendario' }]}
+                            iconOnly
+                            options={[{ value: 'table', label: 'Tabla', icon: Table2 }, { value: 'calendar', label: 'Calendario', icon: CalendarDays }]}
                             value={viewMode}
                             onChange={setViewMode}
                         />
@@ -538,66 +548,75 @@ export default function Reservations() {
                 )}
             />
 
-            <SalonCards only="reservation" />
+            {viewMode === 'table' && !loadError && (
+                <Tabs ariaLabel="Estado de la reservación" tabs={statusTabs} active={filterStatus} onChange={setFilterStatus} />
+            )}
 
+            {/* Con error de carga no se muestra una agenda desactualizada como si fuera real. */}
             {loadError && <LoadErrorState message={loadError} onRetry={() => { void loadReservations(); }} />}
 
-            {!loadError && viewMode !== 'calendar' && (
-                <div className="reservations-filters">
-                    <SegmentedControl ariaLabel="Estado de la reservación" options={statusSegments} value={filterStatus} onChange={setFilterStatus} />
-                    <div className="reservations-search">
+            {!loadError && viewMode === 'table' && (
+                <>
+                    <TableToolbar>
                         <Input
+                            type="search"
+                            prefix={<Search size={16} aria-hidden="true" />}
                             aria-label="Buscar reservación"
                             placeholder="Buscar por nombre, teléfono o fecha..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                         />
-                    </div>
-                </div>
+                    </TableToolbar>
+                    <DataTable
+                        ariaLabel="Reservaciones"
+                        columns={columns}
+                        rows={sortedReservations}
+                        rowKey={(r) => r.id}
+                        loading={loading && reservations.length === 0}
+                        resetKey={`${filterStatus}|${searchQuery}`}
+                        empty={(
+                            <EmptyState
+                                icon={Calendar}
+                                title="No hay reservaciones"
+                                description={searchQuery ? 'No se encontraron resultados para tu búsqueda' : 'Crea una nueva reservación para comenzar'}
+                            />
+                        )}
+                    />
+                </>
             )}
 
-            {/* Calendar View */}
             {!loadError && viewMode === 'calendar' && (
-                <div className="calendar-container">
-                    {/* Calendar Header */}
-                    <div className="calendar-header">
-                        <div className="calendar-month-year">
-                            <button className="calendar-nav-btn" onClick={handlePrevPeriod} aria-label="Periodo anterior">
-                                <ChevronLeft size={20} />
-                            </button>
-                            <h2>{getCalendarTitle()}</h2>
-                            <button className="calendar-nav-btn" onClick={handleNextPeriod} aria-label="Periodo siguiente">
-                                <ChevronRight size={20} />
-                            </button>
+                <section className="res-calendar" aria-label="Calendario de reservaciones">
+                    <TableToolbar
+                        actions={(
+                            <>
+                                <SegmentedControl
+                                    ariaLabel="Escala del calendario"
+                                    options={[{ value: 'day', label: 'Día' }, { value: 'week', label: 'Semana' }, { value: 'month', label: 'Mes' }]}
+                                    value={calendarViewMode}
+                                    onChange={setCalendarViewMode}
+                                />
+                                <Button onClick={handleToday}>Hoy</Button>
+                            </>
+                        )}
+                    >
+                        <div className="res-calendar__nav" role="group" aria-label="Periodo">
+                            <IconButton icon={ChevronLeft} label="Periodo anterior" tooltip="Periodo anterior" onClick={handlePrevPeriod} />
+                            <h2 className="res-calendar__title">{getCalendarTitle()}</h2>
+                            <IconButton icon={ChevronRight} label="Periodo siguiente" tooltip="Periodo siguiente" onClick={handleNextPeriod} />
                         </div>
-                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                            {/* Calendar View Mode Selector */}
-                            <SegmentedControl
-                                ariaLabel="Escala del calendario"
-                                options={[{ value: 'day', label: 'Día' }, { value: 'week', label: 'Semana' }, { value: 'month', label: 'Mes' }]}
-                                value={calendarViewMode}
-                                onChange={setCalendarViewMode}
-                            />
-                            <button className="today-btn" onClick={handleToday}>
-                                Hoy
-                            </button>
-                        </div>
-                    </div>
+                    </TableToolbar>
 
-                    {/* Calendar Content - Changes based on view mode */}
                     {calendarViewMode === 'month' && (
-                        <div className="calendar-grid">
-                            {/* Day headers */}
+                        <div className="res-month">
                             {['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'].map(day => (
-                                <div key={day} className="calendar-day-header">{day}</div>
+                                <div key={day} className="res-month__weekday">{day}</div>
                             ))}
 
-                            {/* Empty cells for days before month starts */}
                             {Array.from({ length: startingDayOfWeek }).map((_, i) => (
-                                <div key={`empty-${i}`} className="calendar-day empty"></div>
+                                <div key={`empty-${i}`} className="res-month__day is-empty" aria-hidden="true"></div>
                             ))}
 
-                            {/* Days of the month */}
                             {Array.from({ length: daysInMonth }).map((_, i) => {
                                 const day = i + 1;
                                 const date = new Date(year, month, day);
@@ -605,32 +624,19 @@ export default function Reservations() {
                                 const isToday = new Date().toDateString() === date.toDateString();
 
                                 return (
-                                    <div
-                                        key={day}
-                                        className={`calendar-day ${isToday ? 'today' : ''} ${dayReservations.length > 0 ? 'has-reservations' : ''}`}
-                                    >
-                                        <div className="calendar-day-number">{day}</div>
+                                    <div key={day} className={`res-month__day ${isToday ? 'is-today' : ''}`}>
+                                        <span className="res-month__number">{day}</span>
                                         {dayReservations.length > 0 && (
-                                            <div className="calendar-reservations">
-                                                {dayReservations.slice(0, 3).map(res => (
-                                                    <div
-                                                        key={res.id}
-                                                        className={`calendar-reservation-item ${getStatusColor(res.status)}`}
-                                                        onClick={() => {
-                                                            if (res.status === 'PENDING') {
-                                                                handleOpenSidebar(res);
-                                                            }
-                                                        }}
-                                                        style={{ cursor: res.status === 'PENDING' ? 'pointer' : 'default' }}
-                                                        title={`${res.customerName} - ${formatTime(res.date)} - ${res.peopleCount} personas - ${getStatusText(res.status)}`}
-                                                    >
-                                                        <span className="res-time">{formatTime(res.date)}</span>
-                                                        <span className="res-name">{res.customerName}</span>
-                                                        <span className="res-people">{res.peopleCount}<Users size={10} /></span>
-                                                    </div>
-                                                ))}
+                                            <div className="res-month__items">
+                                                {dayReservations.slice(0, 3).map(res => calendarItem(res, 'res-month__item', (
+                                                    <>
+                                                        <span className="res-month__time">{formatTime(res.date)}</span>
+                                                        <span className="res-month__name">{res.customerName}</span>
+                                                        <span className="res-month__people">{res.peopleCount}<Users size={10} aria-hidden="true" /></span>
+                                                    </>
+                                                )))}
                                                 {dayReservations.length > 3 && (
-                                                    <div className="calendar-more">+{dayReservations.length - 3} más</div>
+                                                    <span className="res-month__more">+{dayReservations.length - 3} más</span>
                                                 )}
                                             </div>
                                         )}
@@ -640,9 +646,8 @@ export default function Reservations() {
                         </div>
                     )}
 
-                    {/* Week View - Timeline by day */}
                     {calendarViewMode === 'week' && (
-                        <div className="week-view">
+                        <div className="res-week">
                             {Array.from({ length: 7 }).map((_, dayIndex) => {
                                 const weekStart = new Date(currentWeek);
                                 weekStart.setDate(weekStart.getDate() - weekStart.getDay());
@@ -654,31 +659,22 @@ export default function Reservations() {
                                 const isToday = new Date().toDateString() === date.toDateString();
 
                                 return (
-                                    <div key={dayIndex} className={`week-day ${isToday ? 'today' : ''}`}>
-                                        <div className="week-day-header">
-                                            <div className="week-day-name">{date.toLocaleDateString('es-ES', { weekday: 'short' })}</div>
-                                            <div className="week-day-number">{date.getDate()}</div>
+                                    <div key={dayIndex} className={`res-week__day ${isToday ? 'is-today' : ''}`}>
+                                        <div className="res-week__head">
+                                            <span className="res-week__name">{date.toLocaleDateString('es-ES', { weekday: 'short' })}</span>
+                                            <span className="res-week__number">{date.getDate()}</span>
                                         </div>
-                                        <div className="week-day-reservations">
+                                        <div className="res-week__items">
                                             {dayReservations.length > 0 ? (
-                                                dayReservations.map(res => (
-                                                    <div
-                                                        key={res.id}
-                                                        className={`week-reservation-item ${getStatusColor(res.status)}`}
-                                                        onClick={() => {
-                                                            if (res.status === 'PENDING') {
-                                                                handleOpenSidebar(res);
-                                                            }
-                                                        }}
-                                                        style={{ cursor: res.status === 'PENDING' ? 'pointer' : 'default' }}
-                                                    >
-                                                        <div className="week-res-time">{formatTime(res.date)}</div>
-                                                        <div className="week-res-name">{res.customerName}</div>
-                                                        <div className="week-res-people"><Users size={14} /> {res.peopleCount}</div>
-                                                    </div>
-                                                ))
+                                                dayReservations.map(res => calendarItem(res, 'res-week__item', (
+                                                    <>
+                                                        <span className="res-week__time">{formatTime(res.date)}</span>
+                                                        <span className="res-week__customer">{res.customerName}</span>
+                                                        <span className="res-week__people"><Users size={14} aria-hidden="true" /> {res.peopleCount}</span>
+                                                    </>
+                                                )))
                                             ) : (
-                                                <div className="no-reservations">Sin reservaciones</div>
+                                                <p className="res-week__empty">Sin reservaciones</p>
                                             )}
                                         </div>
                                     </div>
@@ -687,9 +683,8 @@ export default function Reservations() {
                         </div>
                     )}
 
-                    {/* Day View - Timeline by hour */}
                     {calendarViewMode === 'day' && (
-                        <div className="day-view">
+                        <div className="res-day">
                             {Array.from({ length: 24 }).map((_, hour) => {
                                 const hourReservations = reservations.filter(r => {
                                     const resDate = new Date(r.date);
@@ -700,62 +695,32 @@ export default function Reservations() {
                                 }).sort((a, b) => new Date(a.date).getMinutes() - new Date(b.date).getMinutes());
 
                                 return (
-                                    <div key={hour} className="day-hour-slot">
-                                        <div className="day-hour-label">
+                                    <div key={hour} className="res-day__slot">
+                                        <div className="res-day__hour">
                                             {hour.toString().padStart(2, '0')}:00
                                         </div>
-                                        <div className="day-hour-content">
-                                            {hourReservations.length > 0 ? (
-                                                hourReservations.map(res => (
-                                                    <div
-                                                        key={res.id}
-                                                        className={`day-reservation-item ${getStatusColor(res.status)}`}
-                                                        onClick={() => {
-                                                            if (res.status === 'PENDING') {
-                                                                handleOpenSidebar(res);
-                                                            }
-                                                        }}
-                                                        style={{ cursor: res.status === 'PENDING' ? 'pointer' : 'default' }}
-                                                    >
-                                                        <div className="day-res-header">
-                                                            <span className="day-res-time">{formatTime(res.date)}</span>
-                                                            <span className={`day-res-status ${getStatusColor(res.status)}`}>
-                                                                {getStatusText(res.status)}
-                                                            </span>
-                                                        </div>
-                                                        <div className="day-res-name">{res.customerName}</div>
-                                                        <div className="day-res-details">
-                                                            <span><Users size={14} /> {res.peopleCount} personas</span>
-                                                            {res.phone && <span><Phone size={14} /> {res.phone}</span>}
-                                                        </div>
-                                                        {res.notes && <div className="day-res-notes">{res.notes}</div>}
-                                                    </div>
-                                                ))
-                                            ) : null}
+                                        <div className="res-day__items">
+                                            {hourReservations.map(res => calendarItem(res, 'res-day__item', (
+                                                <>
+                                                    <span className="res-day__head">
+                                                        <span className="res-day__time">{formatTime(res.date)}</span>
+                                                        <Badge tone={getStatusTone(res.status)}>{getStatusText(res.status)}</Badge>
+                                                    </span>
+                                                    <span className="res-day__customer">{res.customerName}</span>
+                                                    <span className="res-day__details">
+                                                        <span><Users size={14} aria-hidden="true" /> {res.peopleCount} personas</span>
+                                                        {res.phone && <span><Phone size={14} aria-hidden="true" /> {res.phone}</span>}
+                                                    </span>
+                                                    {res.notes && <span className="res-day__notes">{res.notes}</span>}
+                                                </>
+                                            )))}
                                         </div>
                                     </div>
                                 );
                             })}
                         </div>
                     )}
-                </div>
-            )}
-
-            {!loadError && viewMode === 'table' && (
-                <DataTable
-                    ariaLabel="Reservaciones"
-                    columns={columns}
-                    rows={sortedReservations}
-                    rowKey={(r) => r.id}
-                    resetKey={`${filterStatus}|${searchQuery}`}
-                    empty={(
-                        <EmptyState
-                            icon={Calendar}
-                            title="No hay reservaciones"
-                            description={searchQuery ? 'No se encontraron resultados para tu búsqueda' : 'Crea una nueva reservación para comenzar'}
-                        />
-                    )}
-                />
+                </section>
             )}
 
             <FullScreenModal

@@ -7,7 +7,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
 import { hasAnyRole } from '../utils/authz';
-import { Plus, Trash2, Truck, Search, History, Edit2 } from 'lucide-react';
+import { Plus, Trash2, Truck, Search, History, Pencil } from 'lucide-react';
 import type { Supplier } from '../types';
 import styles from './catalog.module.css';
 import {
@@ -58,23 +58,27 @@ export default function Suppliers() {
     const [searchTerm, setSearchTerm] = useState('');
     const [supplyTypeFilter, setSupplyTypeFilter] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
+    const [loadError, setLoadError] = useState<string | null>(null);
 
     // Price history
     const [showPriceHistory, setShowPriceHistory] = useState(false);
     const [priceHistorySupplier, setPriceHistorySupplier] = useState<Supplier | null>(null);
     const [priceHistory, setPriceHistory] = useState<PriceHistoryRow[]>([]);
     const [priceHistoryLoading, setPriceHistoryLoading] = useState(false);
+    const [priceHistoryError, setPriceHistoryError] = useState<string | null>(null);
     const [settings, setSettings] = useState<CurrencySettings>({});
 
     const viewPriceHistory = async (supplier: Supplier) => {
         setPriceHistorySupplier(supplier);
         setPriceHistoryLoading(true);
+        setPriceHistoryError(null);
         setShowPriceHistory(true);
         try {
             const res = await suppliersAPI.getPriceHistory(supplier.id);
             setPriceHistory(res.data.data || []);
         } catch (err) {
-            notifyError(err, 'No se pudo cargar el historial de precios');
+            setPriceHistory([]);
+            setPriceHistoryError(getApiErrorMessage(err, 'No se pudo cargar el historial de precios'));
         } finally {
             setPriceHistoryLoading(false);
         }
@@ -88,11 +92,12 @@ export default function Suppliers() {
     }, []);
 
     const loadSuppliers = async () => {
+        setLoadError(null);
         try {
             const res = await suppliersAPI.getAll();
             setSuppliers(res.data.data);
         } catch (error) {
-            notifyError(error, 'No se pudieron cargar los proveedores');
+            setLoadError(getApiErrorMessage(error, 'No se pudieron cargar los proveedores'));
         } finally {
             setLoading(false);
         }
@@ -181,7 +186,7 @@ export default function Suppliers() {
                 </div>
             )
         },
-        { key: 'type', header: 'Tipo', render: (s) => s.supplyType ? <Badge>{s.supplyType}</Badge> : '—' },
+        { key: 'type', header: 'Tipo', type: 'status', render: (s) => s.supplyType ? <Badge>{s.supplyType}</Badge> : '—' },
         { key: 'contact', header: 'Contacto', accessor: (s) => s.contact || '—' },
         { key: 'phone', header: 'Teléfono', accessor: (s) => s.phone || '—' },
         { key: 'email', header: 'Email', accessor: (s) => s.email || '—', hideBelow: 'lg' },
@@ -189,11 +194,12 @@ export default function Suppliers() {
             key: 'actions',
             header: 'Acciones',
             type: 'actions',
+            width: '136px',
             render: (s) => (
                 <div className={styles.rowActions}>
-                    <IconButton size="sm" icon={History} label={`Historial de precios de ${s.name}`} onClick={() => viewPriceHistory(s)} />
-                    {canManageSupplier && <IconButton size="sm" icon={Edit2} label={`Editar ${s.name}`} onClick={() => handleOpenModal(s)} />}
-                    {canDeleteSupplier && <IconButton size="sm" icon={Trash2} label={`Eliminar ${s.name}`} onClick={() => handleDelete(s.id)} />}
+                    {canManageSupplier && <IconButton size="sm" icon={Pencil} tooltip="Editar" label={`Editar ${s.name}`} onClick={() => handleOpenModal(s)} />}
+                    <IconButton size="sm" icon={History} tooltip="Historial" label={`Historial de precios de ${s.name}`} onClick={() => viewPriceHistory(s)} />
+                    {canDeleteSupplier && <IconButton size="sm" icon={Trash2} tone="danger" tooltip="Eliminar" label={`Eliminar ${s.name}`} onClick={() => handleDelete(s.id)} />}
                 </div>
             )
         }
@@ -222,7 +228,7 @@ export default function Suppliers() {
         <PageContent>
             <PageHeader
                 title="Proveedores"
-                description={`${suppliers.length} proveedores registrados`}
+                description="Proveedores, contactos e historial de precios de compra."
                 actions={canManageSupplier ? (
                     <Button variant="primary" icon={Plus} onClick={() => handleOpenModal()}>
                         Nuevo proveedor
@@ -230,12 +236,33 @@ export default function Suppliers() {
                 ) : undefined}
             />
 
+            <TableToolbar>
+                <Input
+                    type="search"
+                    aria-label="Buscar proveedor"
+                    placeholder="Buscar por nombre, contacto o tipo"
+                    prefix={<Search size={14} aria-hidden="true" />}
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                />
+                <AppSelect
+                    options={FIXED_SUPPLY_TYPES.map(type => ({ value: type, label: type }))}
+                    value={supplyTypeFilter}
+                    onChange={(v) => setSupplyTypeFilter(v)}
+                    placeholder="Todos los tipos"
+                    isClearable
+                    aria-label="Filtrar por tipo de suministro"
+                />
+            </TableToolbar>
+
             <DataTable<Supplier>
                 ariaLabel="Listado de proveedores"
                 rows={filteredSuppliers}
                 rowKey={(s) => s.id}
                 columns={columns}
                 loading={loading}
+                error={loadError}
+                onRetry={() => { setLoading(true); void loadSuppliers(); }}
                 resetKey={`${searchTerm}|${supplyTypeFilter}`}
                 onRowClick={canManageSupplier ? (s) => handleOpenModal(s) : undefined}
                 empty={(
@@ -246,26 +273,6 @@ export default function Suppliers() {
                             <Button onClick={() => { setSearchTerm(''); setSupplyTypeFilter(null); }}>Limpiar filtros</Button>
                         ) : undefined}
                     />
-                )}
-                toolbar={(
-                    <TableToolbar>
-                        <Input
-                            type="search"
-                            aria-label="Buscar proveedor"
-                            placeholder="Buscar por nombre, contacto o tipo"
-                            prefix={<Search size={14} aria-hidden="true" />}
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                        />
-                        <AppSelect
-                            options={FIXED_SUPPLY_TYPES.map(type => ({ value: type, label: type }))}
-                            value={supplyTypeFilter}
-                            onChange={(v) => setSupplyTypeFilter(v)}
-                            placeholder="Todos los tipos"
-                            isClearable
-                            aria-label="Filtrar por tipo de suministro"
-                        />
-                    </TableToolbar>
                 )}
             />
 
@@ -352,6 +359,8 @@ export default function Suppliers() {
                     ariaLabel="Historial de precios"
                     rows={priceHistory}
                     loading={priceHistoryLoading}
+                    error={priceHistoryError}
+                    onRetry={priceHistorySupplier ? () => { void viewPriceHistory(priceHistorySupplier); } : undefined}
                     rowKey={(item) => `${item.purchaseOrderId}-${item.productName}-${item.date}`}
                     columns={priceColumns}
                     empty="No hay historial de precios para este proveedor"

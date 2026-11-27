@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { useState } from 'react';
+import { List, Map as MapIcon } from 'lucide-react';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { NumberInput } from './NumberInput';
@@ -76,5 +77,25 @@ describe('controles de formulario', () => {
     );
     expect(screen.getByRole('button', { name: 'B' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('button', { name: 'A' })).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('SegmentedControl iconOnly: muestra el icono, nombre accesible = label y sin texto visible', async () => {
+    const onChange = vi.fn();
+    const { container } = render(
+      <SegmentedControl
+        ariaLabel="Vista"
+        value="list"
+        onChange={onChange}
+        iconOnly
+        options={[{ value: 'list', label: 'Lista', icon: List }, { value: 'map', label: 'Plano', icon: MapIcon }]}
+      />,
+    );
+    const btn = screen.getByRole('button', { name: 'Plano' });
+    expect(btn).toHaveClass('ui-segmented__btn--icononly');
+    expect(btn.querySelector('svg')).not.toBeNull();
+    expect(btn).not.toHaveTextContent('Plano');
+    expect(container.querySelector('.ui-segmented')).toHaveClass('ui-segmented--icononly');
+    await userEvent.click(btn);
+    expect(onChange).toHaveBeenCalledWith('map');
   });
 });

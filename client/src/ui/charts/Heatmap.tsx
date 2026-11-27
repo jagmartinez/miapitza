@@ -44,7 +44,8 @@ export function Heatmap({ rows, columns, format, caption, ariaLabel = 'Mapa de c
         ))}
       </div>
       {caption ? <figcaption className="ui-heatmap__caption">{caption}</figcaption> : null}
-      <table className="ui-visually-hidden">
+      <div className="ui-visually-hidden">
+        <table>
         <caption>{label}</caption>
         <thead><tr><th>Día</th>{columns.map((c) => <th key={c}>{c}</th>)}</tr></thead>
         <tbody>
@@ -56,6 +57,7 @@ export function Heatmap({ rows, columns, format, caption, ariaLabel = 'Mapa de c
           ))}
         </tbody>
       </table>
+      </div>
     </figure>
   );
 }

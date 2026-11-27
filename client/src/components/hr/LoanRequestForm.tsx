@@ -1,6 +1,6 @@
-import { AppSelect, Button, Checkbox, DateInput, Input, Textarea } from '@/ui';
+import { AppSelect, Button, Checkbox, DateInput, Field, Input, Textarea } from '@/ui';
 import HrMoneyInput from './HrMoneyInput';
-import { useState } from 'react';
+import { useState, useId } from 'react';
 import { ShieldCheck, WalletCards } from 'lucide-react';
 import HrModalFormShell from './HrModalFormShell';
 import type { HrUserSummary } from '../../types/hr';
@@ -23,6 +23,7 @@ export default function LoanRequestForm({
   onSubmit,
   onCancel,
 }: LoanRequestFormProps) {
+  const fid = useId();
   const [form, setForm] = useState<HrLoanRequestPayload>({
     purpose: '',
     currency: 'NIO',
@@ -51,34 +52,34 @@ export default function LoanRequestForm({
           <Button type="button" variant="ghost" onClick={onCancel} disabled={saving}>
             Cancelar
           </Button>
-          <Button variant="primary" type="submit" disabled={!online || saving || !confirmed}>
-            {saving ? 'Enviando…' : 'Enviar solicitud'}
+          <Button loading={saving} variant="primary" type="submit" disabled={!online || saving || !confirmed}>
+            Enviar solicitud
           </Button>
         </>
       }
     >
       {!selfService && (
-        <label className="span-full">
-          Persona solicitante
-          <AppSelect<string>
-            options={[
-              { value: '', label: 'Selecciona una persona' },
-              ...users.map((user) => ({
-                value: String(user.id),
-                label: user.name || user.username,
-              })),
-            ]}
-            value={String(form.userId ?? '')}
-            onChange={(next) =>
-              setForm((current) => ({ ...current, userId: Number(next ?? '') }))
-            }
-            isClearable={false}
-          />
-        </label>
+        <div className="span-full">
+          <Field label="Persona solicitante" htmlFor={`${fid}-persona-solicitante`}>
+            <AppSelect<string> inputId={`${fid}-persona-solicitante`}
+              options={[
+                { value: '', label: 'Selecciona una persona' },
+                ...users.map((user) => ({
+                  value: String(user.id),
+                  label: user.name || user.username,
+                })),
+              ]}
+              value={String(form.userId ?? '')}
+              onChange={(next) =>
+                setForm((current) => ({ ...current, userId: Number(next ?? '') }))
+              }
+              isClearable={false}
+            />
+          </Field>
+        </div>
       )}
-      <label>
-        Moneda
-        <AppSelect<string>
+      <Field label="Moneda" htmlFor={`${fid}-moneda`}>
+        <AppSelect<string> inputId={`${fid}-moneda`}
           options={[
             { value: 'NIO', label: 'NIO — Córdoba' },
             { value: 'USD', label: 'USD — Dólar' },
@@ -87,20 +88,18 @@ export default function LoanRequestForm({
           onChange={(next) => setForm((current) => ({ ...current, currency: next ?? '' }))}
           isClearable={false}
         />
-      </label>
-      <label>
-        Monto solicitado
-        <HrMoneyInput
+      </Field>
+      <Field label="Monto solicitado" htmlFor={`${fid}-monto-solicitado`}>
+        <HrMoneyInput id={`${fid}-monto-solicitado`}
           value={form.requestedAmount}
           onValueChange={(requestedAmount) =>
             setForm((current) => ({ ...current, requestedAmount }))
           }
           required
         />
-      </label>
-      <label>
-        Cuotas preferidas
-        <Input
+      </Field>
+      <Field label="Cuotas preferidas" htmlFor={`${fid}-cuotas-preferidas`} hint="El calendario final y sus cuotas se calculan en el servidor.">
+        <Input id={`${fid}-cuotas-preferidas`}
           type="number"
           min="1"
           max="120"
@@ -113,11 +112,9 @@ export default function LoanRequestForm({
           }
           required
         />
-        <small>El calendario final y sus cuotas se calculan en el servidor.</small>
-      </label>
-      <label>
-        Primera fecha preferida
-        <DateInput
+      </Field>
+      <Field label="Primera fecha preferida" htmlFor={`${fid}-primera-fecha-preferida`}>
+        <DateInput id={`${fid}-primera-fecha-preferida`}
          
           value={form.firstPreferredDeductionDate ?? ''}
           onChange={(event) =>
@@ -127,17 +124,18 @@ export default function LoanRequestForm({
             }))
           }
         />
-      </label>
-      <label className="span-full">
-        Finalidad
-        <Textarea
-          rows={4}
-          value={form.purpose}
-          onChange={(event) => setForm((current) => ({ ...current, purpose: event.target.value }))}
-          maxLength={900}
-          required
-        />
-      </label>
+      </Field>
+      <div className="span-full">
+        <Field label="Finalidad" htmlFor={`${fid}-finalidad`}>
+          <Textarea id={`${fid}-finalidad`}
+            rows={4}
+            value={form.purpose}
+            onChange={(event) => setForm((current) => ({ ...current, purpose: event.target.value }))}
+            maxLength={900}
+            required
+          />
+        </Field>
+      </div>
       <Checkbox className="span-full" checked={form.payrollDeductionRequested}
           onChange={(event) =>
             setForm((current) => ({ ...current, payrollDeductionRequested: event.target.checked }))

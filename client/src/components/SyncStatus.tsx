@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { AlertTriangle, RefreshCw, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
 import { offlineManager } from '../services/offlineManager';
 import type { SyncItem } from '../services/db';
+import { Button } from '@/ui';
+import './SyncStatus.css';
 
 export default function SyncStatus() {
     const [failedItems, setFailedItems] = useState<SyncItem[]>([]);
@@ -43,6 +45,7 @@ export default function SyncStatus() {
     return (
         <div className="sync-status-panel">
             <button
+                type="button"
                 className="sync-status-header"
                 onClick={() => setExpanded(!expanded)}
             >
@@ -87,21 +90,12 @@ export default function SyncStatus() {
                         )}
                     </div>
                     <div className="sync-status-actions">
-                        <button
-                            className="sync-action-btn sync-retry-btn"
-                            onClick={handleRetry}
-                            disabled={retrying}
-                        >
-                            <RefreshCw size={14} className={retrying ? 'animate-spin' : ''} />
+                        <Button variant="primary" onClick={handleRetry} loading={retrying} icon={RefreshCw}>
                             Reintentar todo
-                        </button>
-                        <button
-                            className="sync-action-btn sync-clear-btn"
-                            onClick={handleClear}
-                        >
-                            <Trash2 size={14} />
+                        </Button>
+                        <Button variant="secondary" onClick={handleClear} icon={Trash2}>
                             Descartar
-                        </button>
+                        </Button>
                     </div>
                 </div>
             )}

@@ -5,11 +5,11 @@
     z-index: 1000;
     background: var(--ui-surface);
     border: 1px solid var(--ui-border);
-    border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    border-radius: var(--ui-radius-lg);
+    box-shadow: var(--ui-shadow-overlay);
     min-width: 260px;
     max-width: 380px;
-    font-size: 13px;
+    font-size: var(--ui-text-sm);
 }
 
 .sync-status-header {
@@ -35,18 +35,18 @@
     align-items: center;
     gap: 4px;
     padding: 2px 8px;
-    border-radius: 12px;
+    border-radius: 999px;
     font-size: 12px;
     font-weight: 500;
 }
 
 .sync-badge-error {
-    background: color-mix(in srgb, var(--ui-danger) 15%, transparent);
+    background: var(--ui-danger-soft);
     color: var(--ui-danger);
 }
 
 .sync-badge-pending {
-    background: color-mix(in srgb, var(--ui-warning) 15%, transparent);
+    background: var(--ui-warning-soft);
     color: var(--ui-warning);
 }
 
@@ -121,53 +121,7 @@
     margin-top: 8px;
 }
 
-.sync-action-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    padding: 6px 12px;
-    border: none;
-    border-radius: 6px;
-    cursor: pointer;
-    font-size: 12px;
-    font-weight: 500;
-    flex: 1;
-    justify-content: center;
-}
-
-.sync-retry-btn {
-    background: var(--ui-primary);
-    color: white;
-}
-
-.sync-retry-btn:hover {
-    background: var(--ui-primary-hover);
-}
-
-.sync-retry-btn:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-}
-
-.sync-clear-btn {
-    background: var(--ui-surface);
-    border: 1px solid var(--ui-border);
-    color: var(--ui-text);
-}
-
-.sync-clear-btn:hover {
-    background: color-mix(in srgb, var(--ui-danger) 10%, transparent);
-    color: var(--ui-danger);
-}
-
-@keyframes spin {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
-}
-
-.animate-spin {
-    animation: spin 1s linear infinite;
-}
+.sync-status-actions > * { flex: 1; }
 
 @media (max-width: 768px) {
   .sync-status-panel {

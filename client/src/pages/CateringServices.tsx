@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, Trash2, Edit2, ClipboardList, Search } from 'lucide-react';
+import { Plus, Trash2, Pencil, ClipboardList, Search } from 'lucide-react';
 import { cateringAPI } from '../services/api';
 import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
@@ -34,6 +34,7 @@ export default function CateringServices() {
     const canManageCatering = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN'].includes(role));
     const [services, setServices] = useState<CateringServiceRow[]>([]);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [editingService, setEditingService] = useState<CateringServiceRow | null>(null);
@@ -51,8 +52,10 @@ export default function CateringServices() {
             setLoading(true);
             const response = await cateringAPI.getAllServices();
             setServices(response.data.data);
+            setLoadError(null);
         } catch (error) {
             console.error('Error loading services:', error);
+            setLoadError('No se pudieron cargar los servicios de catering.');
             showError(getApiErrorMessage(error, 'No se pudieron cargar los servicios de catering'));
         } finally {
             setLoading(false);
@@ -163,6 +166,7 @@ export default function CateringServices() {
         {
             key: 'name',
             header: 'Servicio',
+            type: 'text',
             render: (s) => (
                 <div className={styles.cellStack}>
                     <span className={styles.cellTitle}>{s.name}</span>
@@ -185,10 +189,11 @@ export default function CateringServices() {
             key: 'actions',
             header: 'Acciones',
             type: 'actions',
+            width: '100px',
             render: (s: CateringServiceRow) => (
                 <div className={styles.rowActions}>
-                    <IconButton size="sm" icon={Edit2} label={`Editar ${s.name}`} onClick={() => handleOpenSidebar(s)} />
-                    <IconButton size="sm" icon={Trash2} label={`Eliminar ${s.name}`} onClick={() => handleDelete(s.id)} />
+                    <IconButton size="sm" icon={Pencil} label={`Editar ${s.name}`} tooltip="Editar" onClick={() => handleOpenSidebar(s)} />
+                    <IconButton size="sm" icon={Trash2} tone="danger" tooltip="Eliminar" label={`Eliminar ${s.name}`} onClick={() => handleDelete(s.id)} />
                 </div>
             )
         }] : [])
@@ -206,27 +211,30 @@ export default function CateringServices() {
                 )}
             />
 
+            <TableToolbar>
+                <Input
+                    type="search"
+                    aria-label="Buscar en el catálogo"
+                    placeholder="Buscar en el catálogo"
+                    prefix={<Search size={14} aria-hidden="true" />}
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                />
+            </TableToolbar>
+
             <DataTable<CateringServiceRow>
                 ariaLabel="Servicios de catering"
                 rows={filteredServices}
                 rowKey={(s) => s.id}
                 columns={columns}
                 loading={loading}
+                error={loadError}
+                onRetry={() => void loadServices()}
                 resetKey={searchQuery}
                 onRowClick={canManageCatering ? (s) => handleOpenSidebar(s) : undefined}
-                empty={<EmptyState icon={ClipboardList} title="No hay servicios registrados en el catálogo" />}
-                toolbar={(
-                    <TableToolbar>
-                        <Input
-                            type="search"
-                            aria-label="Buscar en el catálogo"
-                            placeholder="Buscar en el catálogo"
-                            prefix={<Search size={14} aria-hidden="true" />}
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                        />
-                    </TableToolbar>
-                )}
+                empty={services.length === 0
+                    ? <EmptyState icon={ClipboardList} title="No hay servicios registrados en el catálogo" />
+                    : 'Sin resultados. Ajusta la búsqueda.'}
             />
 
             <FullScreenModal

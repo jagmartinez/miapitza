@@ -10,7 +10,6 @@ import LanguageSelector from './LanguageSelector';
 import NetworkStatus from './NetworkStatus';
 import MobileBottomNav from './MobileBottomNav';
 import SyncStatus from './SyncStatus';
-import '../components/SyncStatus.css';
 import { AppShell, IconButton, Topbar } from '@/ui';
 import { NAV_GROUPS, activeNavId, visibleNav } from '../navigation/navConfig';
 import { getUserAccentColor } from '../utils/authz';
@@ -58,12 +57,14 @@ export default function Layout() {
                 collapsed={collapsed}
                 onToggleCollapsed={toggleCollapsed}
                 bare={isTableWorkspace}
-                footer={logoutButton}
                 topbar={
                     <Topbar
                         nav={nav}
                         breadcrumb={currentGroup && currentItem ? [currentGroup.label, currentItem.label] : undefined}
                         userName={user?.name}
+                        userDetail={user?.username ? `@${user.username}` : undefined}
+                        onLogout={handleLogout}
+                        logoutLabel={t('common.logout')}
                         accentColor={getUserAccentColor(user)}
                         controls={
                             <>

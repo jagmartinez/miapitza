@@ -56,11 +56,14 @@ describe('RH migrado al design system (@/ui)', () => {
     }
   });
 
-  it('nómina muestra KPI accionables, el avance de la corrida y no reserva un panel de detalle vacío', () => {
+  it('los KPI accionables de nómina viven en el tablero de RH; nómina muestra el avance de la corrida sin panel vacío', () => {
     const payroll = read(pagesDir, 'PayrollManagement.tsx');
-    expect(payroll).toContain('<StatCard');
-    expect(payroll).toContain("label: 'Resolver'");
-    expect(payroll).toContain("'N/D'");
+    const dashboard = read(pagesDir, 'HrDashboard.tsx');
+    expect(dashboard).toContain('<StatCard');
+    expect(dashboard).toContain("label: 'Resolver'");
+    expect(dashboard).toContain("'N/D'");
+    expect(dashboard).toContain("hasPermission(user, 'hr.payroll.read'");
+    expect(payroll).not.toContain('<StatCard');
     expect(payroll).toContain('<PayrollRunStepper');
     expect(payroll).not.toContain('payroll-operation-placeholder');
   });

@@ -1,5 +1,5 @@
-import { Button, DateInput, Input, Textarea } from '@/ui';
-import { useState, type ReactNode } from 'react';
+import { Button, DateInput, Field, Input, Textarea } from '@/ui';
+import { useState, type ReactNode, useId } from 'react';
 import { Scale } from 'lucide-react';
 import HrModalFormShell from './HrModalFormShell';
 import type { HrPayrollRulePayload, HrPayrollRuleVersion } from '../../types/hr-payroll';
@@ -21,6 +21,7 @@ export default function PayrollRuleForm({
   onCancel,
   notice,
 }: PayrollRuleFormProps) {
+  const fid = useId();
   const [name, setName] = useState(initial?.name ?? '');
   const [effectiveFrom, setEffectiveFrom] = useState(initial?.effectiveFrom ?? '');
   const [effectiveTo, setEffectiveTo] = useState(initial?.effectiveTo ?? '');
@@ -57,7 +58,6 @@ export default function PayrollRuleForm({
       tabLabel="Regla"
       sectionTitle="Identidad, vigencia y respaldo normativo"
       icon={<Scale size={18} aria-hidden="true" />}
-      formClassName="hr-payroll-form"
       notice={notice}
       onSubmit={(event) => void submit(event)}
       footer={
@@ -65,7 +65,7 @@ export default function PayrollRuleForm({
           <Button type="button" variant="ghost" onClick={onCancel} disabled={saving}>
             Cancelar
           </Button>
-          <Button variant="primary"
+          <Button variant="primary" loading={saving}
             type="submit"
             disabled={
               !online ||
@@ -76,62 +76,59 @@ export default function PayrollRuleForm({
               !datesAreValid
             }
           >
-            {saving ? 'Guardando…' : initial ? 'Guardar nueva revisión' : 'Crear borrador'}
+            {initial ? 'Guardar nueva revisión' : 'Crear borrador'}
           </Button>
         </>
       }
     >
-      <label>
-        Nombre de la versión
-        <Input
+      <Field label="Nombre de la versión" htmlFor={`${fid}-nombre-de-la-version`}>
+        <Input id={`${fid}-nombre-de-la-version`}
           value={name}
           onChange={(event) => setName(event.target.value)}
           maxLength={120}
           required
         />
-      </label>
-      <label>
-        Vigente desde
-        <DateInput
+      </Field>
+      <Field label="Vigente desde" htmlFor={`${fid}-vigente-desde`}>
+        <DateInput id={`${fid}-vigente-desde`}
          
           value={effectiveFrom}
           onChange={(event) => setEffectiveFrom(event.target.value)}
           required
         />
-      </label>
-      <label>
-        Vigente hasta
-        <DateInput
+      </Field>
+      <Field label="Vigente hasta" htmlFor={`${fid}-vigente-hasta`}>
+        <DateInput id={`${fid}-vigente-hasta`}
          
           min={effectiveFrom || undefined}
           value={effectiveTo}
           onChange={(event) => setEffectiveTo(event.target.value)}
         />
-      </label>
-      <label>
-        Referencia normativa o interna
-        <Input
+      </Field>
+      <Field label="Referencia normativa o interna" htmlFor={`${fid}-referencia-normativa-o-interna`}>
+        <Input id={`${fid}-referencia-normativa-o-interna`}
           value={sourceReference}
           onChange={(event) => setSourceReference(event.target.value)}
           minLength={3}
           maxLength={240}
           required
         />
-      </label>
+      </Field>
       {validationError && (
         <p className="hr-payroll-warning span-full" role="alert">
           {validationError}
         </p>
       )}
-      <label className="span-full">
-        Descripción de alcance
-        <Textarea
-          rows={4}
-          value={description}
-          onChange={(event) => setDescription(event.target.value)}
-          maxLength={700}
-        />
-      </label>
+      <div className="span-full">
+        <Field label="Descripción de alcance" htmlFor={`${fid}-descripcion-de-alcance`}>
+          <Textarea id={`${fid}-descripcion-de-alcance`}
+            rows={4}
+            value={description}
+            onChange={(event) => setDescription(event.target.value)}
+            maxLength={700}
+          />
+        </Field>
+      </div>
       <p className="hr-payroll-help span-full">
         Esta pantalla versiona metadatos y vigencia. No captura tasas, fórmulas legales ni valores
         calculados.

@@ -29,14 +29,9 @@
 
 .reports-view-select { flex: 1 1 200px; width: min(100%, 260px); min-width: 0; }
 
-.reports-filters {
-  display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--ui-space-3); min-width: 0;
-  padding: var(--ui-space-3) 0; border-bottom: 1px solid var(--ui-border);
-}
 .reports-filters__select { flex: 1 1 200px; min-width: min(100%, 180px); max-width: 100%; }
 .reports-filters__select--wide { flex-basis: 280px; }
 .reports-filters__select--narrow { flex-basis: 160px; }
-.reports-filters__actions { display: flex; flex-wrap: wrap; gap: var(--ui-space-2); margin-left: auto; min-width: 0; }
 
 .reports-warning {
   display: flex; flex-wrap: wrap; align-items: center; gap: var(--ui-space-2) var(--ui-space-3);
@@ -47,7 +42,7 @@
 
 .reports-read, .reports-totals, .reports-chart {
   display: flex; flex-direction: column; gap: var(--ui-space-2); min-width: 0;
-  padding: var(--ui-space-4); background: var(--ui-surface); border: 1px solid var(--ui-border); border-radius: var(--ui-radius-lg);
+  padding: var(--ui-space-4) 0 0; border-top: 1px solid var(--ui-border);
 }
 .reports-read__title { margin: 0; font-size: var(--ui-text-md); font-weight: 600; color: var(--ui-text); }
 .reports-read ul { margin: 0; padding-left: var(--ui-space-5); display: flex; flex-direction: column; gap: var(--ui-space-1); font-size: var(--ui-text-sm); }
@@ -67,5 +62,4 @@
   .reports-catalog { position: static; max-height: none; }
   .reports-catalog__select { display: block; }
   .reports-catalog__list { display: none; }
-  .reports-filters__actions { margin-left: 0; width: 100%; }
 }

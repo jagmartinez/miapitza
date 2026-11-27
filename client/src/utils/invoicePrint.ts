@@ -1,3 +1,4 @@
+import { formatNumber } from '../ui/format/number';
 import { escapeHtml } from './escapeHtml';
 
 export interface PrintableInvoiceSnapshot {
@@ -34,7 +35,7 @@ export interface PrintableInvoiceSnapshot {
 }
 
 function money(value: number): string {
-    return Number(value).toFixed(2);
+    return formatNumber(value);
 }
 
 function assertPrintableSnapshot(value: unknown): asserts value is PrintableInvoiceSnapshot {

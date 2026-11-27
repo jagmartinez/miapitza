@@ -5,7 +5,6 @@ import {
     useRef,
     useState,
 } from 'react';
-import { createPortal } from 'react-dom';
 import {
     Banknote,
     CreditCard,
@@ -14,11 +13,9 @@ import {
     Smartphone,
     Trash2,
     Users,
-    X,
 } from 'lucide-react';
 import { paymentsAPI, splitBillAPI } from '../services/api';
 import type { Order, PaymentMethodType } from '../types';
-import { useDialogA11y } from '../hooks/useDialogA11y';
 import { isCashPaymentMethodType } from '../utils/paymentAccess';
 import { newIdempotencyKey } from '../utils/idempotency';
 import {
@@ -34,7 +31,7 @@ import {
     splitTotalEvenly,
     summarizePaymentAllocation,
 } from '../utils/payment';
-import { AppSelect } from '@/ui';
+import { AppSelect, Button, Field, FullScreenModal, IconButton, Input, SegmentedControl, Spinner } from '@/ui';
 import {
     renderInvoiceHtml,
     renderInvoiceLoadingHtml,
@@ -165,7 +162,6 @@ export default function PaymentModal({
     hasUsableCashShift = true,
     initialMode = 'single',
 }: PaymentModalProps) {
-    const dialogRef = useRef<HTMLDivElement>(null);
     const scrollAreaRef = useRef<HTMLDivElement>(null);
     const [mode, setMode] = useState<PaymentMode>(initialMode);
     const [methods, setMethods] = useState<PaymentMethodRow[]>([]);
@@ -202,9 +198,6 @@ export default function PaymentModal({
     const close = useCallback(() => {
         if (!loading) onClose();
     }, [loading, onClose]);
-    const { titleId } = useDialogA11y(isOpen, close, dialogRef, {
-        closeOnEscape: !loading,
-    });
 
     const methodById = useMemo(
         () => new Map(methods.map((method) => [method.id, method])),
@@ -744,7 +737,7 @@ export default function PaymentModal({
         setMode(nextMode);
         setError('');
         setNotice('');
-        requestAnimationFrame(() => scrollAreaRef.current?.scrollTo({ top: 0 }));
+        requestAnimationFrame(() => scrollAreaRef.current?.closest('.ui-fsm__body')?.scrollTo({ top: 0 }));
     };
 
     if (!isOpen) return null;
@@ -780,52 +773,80 @@ export default function PaymentModal({
         disabled = false,
         label = 'Monto',
     ) => (
-        <label className="payment-field" htmlFor={id}>
-            <span>{label}</span>
-            <div className="money-input-wrap">
-                <b>{currencySymbol}</b>
-                <input
-                    id={id}
-                    type="text"
-                    inputMode="decimal"
-                    value={value}
-                    onChange={(event) => onChange(event.target.value)}
-                    onBlur={() => onChange(formatField(value))}
-                    disabled={disabled}
-                    autoComplete="off"
-                />
-            </div>
-        </label>
+        <Field label={label} htmlFor={id}>
+            <Input
+                id={id}
+                className="payment-money-input"
+                prefix={currencySymbol}
+                type="text"
+                inputMode="decimal"
+                value={value}
+                onChange={(event) => onChange(event.target.value)}
+                onBlur={() => onChange(formatField(value))}
+                disabled={disabled}
+                autoComplete="off"
+            />
+        </Field>
     );
 
-    return createPortal(
-        <div
-            ref={dialogRef}
-            className="payment-overlay"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby={titleId}
-            tabIndex={-1}
-            onClick={busy ? undefined : (event) => {
-                if (event.target === event.currentTarget) close();
-            }}
-        >
-            <section
-                className={`payment-dialog payment-dialog-${mode}`}
-                onClick={(event) => event.stopPropagation()}
-            >
-                <header className="payment-dialog-header">
-                    <div className="payment-dialog-heading">
-                        <div>
-                            <span className="payment-eyebrow">Cobro de orden</span>
-                            <h2 id={titleId}>Procesar pago</h2>
-                        </div>
-                    </div>
-                    <button type="button" className="payment-close" onClick={close} disabled={busy} aria-label="Cerrar pago">
-                        <X size={22} />
-                    </button>
-                </header>
+    const renderTextField = (
+        id: string,
+        label: string,
+        value: string,
+        onChange: (value: string) => void,
+        disabled = false,
+        placeholder?: string,
+    ) => (
+        <Field label={label} htmlFor={id}>
+            <Input
+                id={id}
+                value={value}
+                onChange={(event) => onChange(event.target.value)}
+                disabled={disabled}
+                maxLength={191}
+                placeholder={placeholder}
+            />
+        </Field>
+    );
 
+    const renderMethodField = (
+        inputId: string,
+        value: number | null,
+        options: MethodOption[],
+        onChange: (value: number | null) => void,
+        disabled = false,
+        label = 'Método',
+    ) => (
+        <Field label={label} htmlFor={inputId}>
+            {renderMethodSelect(inputId, value, options, onChange, disabled)}
+        </Field>
+    );
+
+    const modeLocked = mixedAttempted || splitAttempted || queuedPayment;
+
+    return (
+        <FullScreenModal
+            isOpen={isOpen}
+            onClose={close}
+            title="Procesar pago"
+            subtitle="Cobro de orden"
+            footerStart={(
+                <>
+                    {(error || balanceError) && <div className="payment-alert error" role="alert">{error || balanceError}</div>}
+                    {notice && <div className="payment-alert warning" role="status">{notice}</div>}
+                    {!hasUsableCashShift && methods.some((method) => isCashPaymentMethodType(method.type)) && <div className="payment-cash-note"><Banknote size={16} /> Efectivo oculto: no hay turno vigente en la sucursal.</div>}
+                </>
+            )}
+            footer={({ requestClose }) => (
+                <>
+                    <Button variant="secondary" onClick={requestClose} disabled={busy}>Cancelar</Button>
+                    <Button variant="primary" loading={loading} onClick={() => void (mode === 'single' ? handleSinglePayment() : mode === 'mixed' ? handleMixedPayment() : handleSplitPayment())} disabled={busy || queuedPayment || Boolean(methodsError) || Boolean(balanceError) || balance <= 0 || (mode === 'single' && (!singleMethodId || (singleIsCash && (singleTendered === null || moneyToCents(singleTendered) < totalCents)))) || (mode === 'mixed' && !mixedValid) || (mode === 'split' && !splitValid)}>
+                        {loading ? 'Procesando…' : previewLoading ? 'Calculando…' : mode === 'single' ? 'Confirmar pago' : mode === 'mixed' ? `Confirmar ${mixedLegs.length} tramos` : `Confirmar ${splitLegs.length} pagos`}
+                    </Button>
+                </>
+            )}
+        >
+            <div className={`payment-dialog payment-dialog-${mode}`}>
                 <div className="payment-workspace">
                     <aside className="payment-context" aria-label="Resumen y tipo de cobro">
                         <section className="payment-total-card" aria-label="Saldo pendiente">
@@ -834,17 +855,18 @@ export default function PaymentModal({
                             {order?.invoiceNumber && <small>Factura {order.invoiceNumber}</small>}
                         </section>
 
-                        <nav className="payment-mode-tabs" role="tablist" aria-label="Tipo de pago">
-                            <button type="button" role="tab" aria-selected={mode === 'single'} className={mode === 'single' ? 'active' : ''} onClick={() => changeMode('single')} disabled={mixedAttempted || splitAttempted || queuedPayment}>
-                                <CreditCard size={18} /><span><strong>Pago único</strong><small>Una forma de pago</small></span>
-                            </button>
-                            <button type="button" role="tab" aria-selected={mode === 'mixed'} className={mode === 'mixed' ? 'active' : ''} onClick={() => changeMode('mixed')} disabled={mixedAttempted || splitAttempted || queuedPayment}>
-                                <Layers3 size={18} /><span><strong>Pago mixto</strong><small>Varios métodos</small></span>
-                            </button>
-                            <button type="button" role="tab" aria-selected={mode === 'split'} className={mode === 'split' ? 'active' : ''} onClick={() => changeMode('split')} disabled={mixedAttempted || splitAttempted || queuedPayment}>
-                                <Users size={18} /><span><strong>Dividir cuenta</strong><small>Varios comensales</small></span>
-                            </button>
-                        </nav>
+                        <fieldset className="payment-mode-tabs" disabled={modeLocked}>
+                            <SegmentedControl<PaymentMode>
+                                ariaLabel="Tipo de pago"
+                                value={mode}
+                                onChange={changeMode}
+                                options={[
+                                    { value: 'single', label: 'Pago único', icon: CreditCard },
+                                    { value: 'mixed', label: 'Pago mixto', icon: Layers3 },
+                                    { value: 'split', label: 'Dividir cuenta', icon: Users },
+                                ]}
+                            />
+                        </fieldset>
 
                         <div className="payment-context-help">
                             <span>{modeHelp.step}</span>
@@ -855,7 +877,7 @@ export default function PaymentModal({
 
                     <div ref={scrollAreaRef} className="payment-scroll-area">
 
-                    {methodsLoading && <div className="payment-state">Cargando métodos de pago…</div>}
+                    {methodsLoading && <div className="payment-state"><Spinner size={16} label="Cargando métodos de pago" /> Cargando métodos de pago…</div>}
                     {methodsError && <div className="payment-alert error" role="alert">{methodsError}</div>}
                     {!methodsLoading && !methodsError && mode === 'single' && (
                         <div className="payment-panel single-panel">
@@ -863,16 +885,8 @@ export default function PaymentModal({
                                 <div><h3>Un método</h3><p>Registra el saldo completo en una sola forma de pago.</p></div>
                                 {singleMethod && (() => { const Icon = methodIcon(singleMethod.type); return <Icon size={26} />; })()}
                             </div>
-                            <label className="payment-field">
-                                <span>Método de pago</span>
-                                {renderMethodSelect('single-payment-method', singleMethodId, usableMethodOptions, setSingleMethodId, busy)}
-                            </label>
-                            {!singleIsCash && (
-                                <label className="payment-field" htmlFor="single-reference">
-                                    <span>Referencia del método <em>opcional</em></span>
-                                    <input id="single-reference" value={singleReference} onChange={(event) => setSingleReference(event.target.value)} maxLength={191} placeholder="Autorización, voucher o transferencia" />
-                                </label>
-                            )}
+                            {renderMethodField('single-payment-method', singleMethodId, usableMethodOptions, setSingleMethodId, busy, 'Método de pago')}
+                            {!singleIsCash && renderTextField('single-reference', 'Referencia del método (opcional)', singleReference, setSingleReference, false, 'Autorización, voucher o transferencia')}
                             {singleIsCash && (
                                 <>
                                     {renderMoneyInput('single-received', singleReceived, setSingleReceived, busy, 'Efectivo recibido')}
@@ -889,7 +903,7 @@ export default function PaymentModal({
                             <div className="payment-section-heading payment-section-heading-with-actions">
                                 <div><h3>Pago mixto</h3><p>Una deuda, distribuida entre 2 o 3 métodos distintos.</p></div>
                                 <div className="payment-heading-tools">
-                                    {!mixedAttempted && mixedLegs.length < 3 && mixedMethodOptions.length > mixedLegs.length && <button type="button" className="payment-add-leg" onClick={() => {
+                                    {!mixedAttempted && mixedLegs.length < 3 && mixedMethodOptions.length > mixedLegs.length && <Button icon={Plus} className="payment-add-leg" onClick={() => {
                                         const nextMethod = mixedMethodOptions.find((option) => !mixedMethodIds.includes(option.value));
                                         if (nextMethod) {
                                             setMixedLegs((current) => {
@@ -918,7 +932,7 @@ export default function PaymentModal({
                                                 ]);
                                             });
                                         }
-                                    }}><Plus size={17} /> Agregar método</button>}
+                                    }}>Agregar método</Button>}
                                     <AllocationStatus summary={mixedAllocation} currencySymbol={currencySymbol} valid={mixedValid} compact />
                                 </div>
                             </div>
@@ -937,7 +951,7 @@ export default function PaymentModal({
                                                 <article className={`payment-leg ${mixedSucceeded.includes(leg.id) ? 'completed' : ''}`} key={leg.id}>
                                                     <div className="payment-leg-title"><span>Tramo {index + 1}</span>{mixedSucceeded.includes(leg.id) && <b>Confirmado</b>}</div>
                                                     <div className="payment-leg-grid">
-                                                        <label className="payment-field"><span>Método</span>{renderMethodSelect(`mixed-method-${leg.id}`, leg.paymentMethodId, options, (value) => updateMixedLeg(leg.id, { paymentMethodId: value, reference: '', received: leg.amount }), mixedAttempted)}</label>
+                                                        {renderMethodField(`mixed-method-${leg.id}`, leg.paymentMethodId, options, (value) => updateMixedLeg(leg.id, { paymentMethodId: value, reference: '', received: leg.amount }), mixedAttempted)}
                                                         {renderMoneyInput(
                                                             `mixed-amount-${leg.id}`,
                                                             leg.amount,
@@ -950,12 +964,12 @@ export default function PaymentModal({
                                                             mixedAttempted || automaticRemainder,
                                                             automaticRemainder ? 'Diferencia automática' : 'Monto',
                                                         )}
-                                                        {cash ? renderMoneyInput(`mixed-received-${leg.id}`, leg.received, (value) => updateMixedLeg(leg.id, { received: value }), mixedAttempted, 'Efectivo recibido') : (
-                                                            <label className="payment-field" htmlFor={`mixed-reference-${leg.id}`}><span>Referencia <em>opcional</em></span><input id={`mixed-reference-${leg.id}`} value={leg.reference} onChange={(event) => updateMixedLeg(leg.id, { reference: event.target.value })} disabled={mixedAttempted} maxLength={191} placeholder="Voucher o transferencia" /></label>
-                                                        )}
+                                                        {cash
+                                                            ? renderMoneyInput(`mixed-received-${leg.id}`, leg.received, (value) => updateMixedLeg(leg.id, { received: value }), mixedAttempted, 'Efectivo recibido')
+                                                            : renderTextField(`mixed-reference-${leg.id}`, 'Referencia (opcional)', leg.reference, (value) => updateMixedLeg(leg.id, { reference: value }), mixedAttempted, 'Voucher o transferencia')}
                                                     </div>
                                                     {cash && <div className="leg-change">Cambio de este tramo: <b>{displayMoney(Math.max(0, received - amount))}</b></div>}
-                                                    {mixedLegs.length > 2 && !mixedAttempted && <button type="button" className="leg-remove" onClick={() => setMixedLegs((current) => rebalanceMixedLegs(current.filter((item) => item.id !== leg.id)))}><Trash2 size={16} /> Eliminar tramo</button>}
+                                                    {mixedLegs.length > 2 && !mixedAttempted && <Button size="sm" variant="ghost" icon={Trash2} className="leg-remove" onClick={() => setMixedLegs((current) => rebalanceMixedLegs(current.filter((item) => item.id !== leg.id)))}>Eliminar tramo</Button>}
                                                 </article>
                                             );
                                         })}
@@ -979,7 +993,7 @@ export default function PaymentModal({
                                     <p>{splitStrategy === 'by-items' ? 'Asigna cada plato o unidad y revisa el total exacto por comensal.' : 'Cobra a cada comensal por partes iguales o por monto.'}</p>
                                 </div>
                                 <div className="payment-heading-tools">
-                                    {splitStrategy !== 'by-items' && <button type="button" className="payment-recalculate" disabled={splitAttempted || previewLoading || !itemAssignmentsComplete} onClick={() => void rebuildSplitPreview()}>{previewLoading ? 'Calculando…' : 'Recalcular importes'}</button>}
+                                    {splitStrategy !== 'by-items' && <Button className="payment-recalculate" loading={previewLoading} disabled={splitAttempted || previewLoading || !itemAssignmentsComplete} onClick={() => void rebuildSplitPreview()}>{previewLoading ? 'Calculando…' : 'Recalcular importes'}</Button>}
                                     {(splitStrategy !== 'by-items' || itemPreviewReady) && <AllocationStatus summary={splitAllocation} currencySymbol={currencySymbol} valid={splitValid} compact />}
                                 </div>
                             </div>
@@ -989,23 +1003,23 @@ export default function PaymentModal({
                                     ['by-items', 'Por unidades'],
                                     ['by-amount', 'Por monto'],
                                 ] as Array<[SplitStrategy, string]>).map(([value, label]) => (
-                                    <button type="button" key={value} className={splitStrategy === value ? 'active' : ''} disabled={splitAttempted} onClick={() => {
+                                    <Button key={value} variant={splitStrategy === value ? 'primary' : 'secondary'} aria-pressed={splitStrategy === value} disabled={splitAttempted} onClick={() => {
                                         setSplitStrategy(value);
                                         if (value === 'by-items') initializeEmptyAssignments();
-                                    }}>{label}</button>
+                                    }}>{label}</Button>
                                 ))}
                             </div>
                             <div className="split-count-row">
                                 <span>Comensales</span>
-                                {[2, 3, 4].map((count) => <button type="button" key={count} className={splitLegs.length === count ? 'active' : ''} disabled={splitAttempted} onClick={() => {
+                                {[2, 3, 4].map((count) => <Button key={count} variant={splitLegs.length === count ? 'primary' : 'secondary'} aria-pressed={splitLegs.length === count} disabled={splitAttempted} onClick={() => {
                                     setSplitLegs(buildSplitLegs(count, splitLegs));
                                     if (splitStrategy === 'by-items') initializeEmptyAssignments();
-                                }}>{count}</button>)}
-                                <button type="button" className="icon" disabled={splitAttempted} onClick={() => {
+                                }}>{count}</Button>)}
+                                <IconButton icon={Plus} label="Agregar comensal" disabled={splitAttempted} onClick={() => {
                                     const count = splitLegs.length + 1;
                                     setSplitLegs(buildSplitLegs(count, splitLegs));
                                     if (splitStrategy === 'by-items') initializeEmptyAssignments();
-                                }} aria-label="Agregar comensal"><Plus size={17} /></button>
+                                }} />
                             </div>
                             {splitStrategy !== 'by-items' && <div className="payment-leg-list">
                                 {splitLegs.map((leg, index) => {
@@ -1016,16 +1030,16 @@ export default function PaymentModal({
                                         <article className={`payment-leg ${splitSucceeded.includes(leg.id) ? 'completed' : ''}`} key={leg.id}>
                                             <div className="payment-leg-title"><span>{leg.payerName || `Comensal ${index + 1}`}</span>{splitSucceeded.includes(leg.id) && <b>Confirmado</b>}</div>
                                             <div className="payment-leg-grid split-leg-grid">
-                                                <label className="payment-field" htmlFor={`payer-${leg.id}`}><span>Comensal</span><input id={`payer-${leg.id}`} value={leg.payerName} onChange={(event) => updateSplitLeg(leg.id, { payerName: event.target.value })} disabled={splitAttempted} maxLength={191} /></label>
-                                                <label className="payment-field"><span>Método</span>{renderMethodSelect(`split-method-${leg.id}`, leg.paymentMethodId, usableMethodOptions, (value) => updateSplitLeg(leg.id, { paymentMethodId: value, reference: '', received: leg.amount }), splitAttempted)}</label>
+                                                {renderTextField(`payer-${leg.id}`, 'Comensal', leg.payerName, (value) => updateSplitLeg(leg.id, { payerName: value }), splitAttempted)}
+                                                {renderMethodField(`split-method-${leg.id}`, leg.paymentMethodId, usableMethodOptions, (value) => updateSplitLeg(leg.id, { paymentMethodId: value, reference: '', received: leg.amount }), splitAttempted)}
                                                 {renderMoneyInput(`split-amount-${leg.id}`, leg.amount, (value) => updateSplitLeg(leg.id, { amount: value, received: cash && parseField(leg.received) === parseField(leg.amount) ? value : leg.received }), splitAttempted || splitStrategy !== 'by-amount')}
-                                                {cash ? renderMoneyInput(`split-received-${leg.id}`, leg.received, (value) => updateSplitLeg(leg.id, { received: value }), splitAttempted, 'Efectivo recibido') : <label className="payment-field" htmlFor={`split-reference-${leg.id}`}><span>Referencia <em>opcional</em></span><input id={`split-reference-${leg.id}`} value={leg.reference} onChange={(event) => updateSplitLeg(leg.id, { reference: event.target.value })} disabled={splitAttempted} maxLength={191} /></label>}
+                                                {cash ? renderMoneyInput(`split-received-${leg.id}`, leg.received, (value) => updateSplitLeg(leg.id, { received: value }), splitAttempted, 'Efectivo recibido') : renderTextField(`split-reference-${leg.id}`, 'Referencia (opcional)', leg.reference, (value) => updateSplitLeg(leg.id, { reference: value }), splitAttempted)}
                                             </div>
                                             {cash && <div className="leg-change">Cambio: <b>{displayMoney(Math.max(0, received - amount))}</b></div>}
-                                            {splitLegs.length > 2 && !splitAttempted && <button type="button" className="leg-remove" onClick={() => {
+                                            {splitLegs.length > 2 && !splitAttempted && <Button size="sm" variant="ghost" icon={Trash2} className="leg-remove" onClick={() => {
                                                 const next = splitLegs.filter((item) => item.id !== leg.id);
                                                 setSplitLegs(buildSplitLegs(next.length, next));
-                                            }}><Trash2 size={16} /> Eliminar</button>}
+                                            }}>Eliminar</Button>}
                                         </article>
                                     );
                                 })}
@@ -1046,14 +1060,14 @@ export default function PaymentModal({
                                                             <span>{item.quantity === 1 ? 'Plato' : `Unidad ${unitIndex + 1}`}</span>
                                                             <div className="unit-payer-options" role="radiogroup" aria-label={`Quién paga ${item.menuItem?.name || 'producto'}, unidad ${unitIndex + 1}`}>
                                                                 {splitLegs.map((leg, payerIndex) => (
-                                                                    <button
-                                                                        type="button"
+                                                                    <Button
+                                                                        size="sm"
                                                                         key={leg.id}
-                                                                        className={owners[unitIndex] === payerIndex ? 'selected' : ''}
+                                                                        variant={owners[unitIndex] === payerIndex ? 'primary' : 'secondary'}
                                                                         aria-pressed={owners[unitIndex] === payerIndex}
                                                                         disabled={splitAttempted}
                                                                         onClick={() => assignItemUnit(item.id, unitIndex, payerIndex)}
-                                                                    >{leg.payerName || `Comensal ${payerIndex + 1}`}</button>
+                                                                    >{leg.payerName || `Comensal ${payerIndex + 1}`}</Button>
                                                                 ))}
                                                             </div>
                                                         </div>
@@ -1070,20 +1084,17 @@ export default function PaymentModal({
                                             return (
                                                 <article className={`split-payer-total ${splitSucceeded.includes(leg.id) ? 'completed' : ''}`} key={leg.id}>
                                                     <header>
-                                                        <label className="payment-field" htmlFor={`payer-${leg.id}`}>
-                                                            <span>Comensal {index + 1}</span>
-                                                            <input id={`payer-${leg.id}`} value={leg.payerName} onChange={(event) => updateSplitLeg(leg.id, { payerName: event.target.value })} disabled={splitAttempted} maxLength={191} />
-                                                        </label>
+                                                        {renderTextField(`payer-${leg.id}`, `Comensal ${index + 1}`, leg.payerName, (value) => updateSplitLeg(leg.id, { payerName: value }), splitAttempted)}
                                                         <div className="split-payer-amount">
                                                             <span>Total exacto</span>
                                                             <strong>{itemPreviewReady ? displayMoney(amount) : 'Pendiente'}</strong>
                                                         </div>
                                                     </header>
                                                     <div className="split-payer-payment">
-                                                        <label className="payment-field"><span>Método</span>{renderMethodSelect(`split-method-${leg.id}`, leg.paymentMethodId, usableMethodOptions, (value) => updateSplitLeg(leg.id, { paymentMethodId: value, reference: '', received: leg.amount }), splitAttempted)}</label>
+                                                        {renderMethodField(`split-method-${leg.id}`, leg.paymentMethodId, usableMethodOptions, (value) => updateSplitLeg(leg.id, { paymentMethodId: value, reference: '', received: leg.amount }), splitAttempted)}
                                                         {cash
                                                             ? renderMoneyInput(`split-received-${leg.id}`, leg.received, (value) => updateSplitLeg(leg.id, { received: value }), splitAttempted, 'Efectivo recibido')
-                                                            : <label className="payment-field" htmlFor={`split-reference-${leg.id}`}><span>Referencia <em>opcional</em></span><input id={`split-reference-${leg.id}`} value={leg.reference} onChange={(event) => updateSplitLeg(leg.id, { reference: event.target.value })} disabled={splitAttempted} maxLength={191} /></label>}
+                                                            : renderTextField(`split-reference-${leg.id}`, 'Referencia (opcional)', leg.reference, (value) => updateSplitLeg(leg.id, { reference: value }), splitAttempted)}
                                                     </div>
                                                     {cash && <div className="leg-change">Cambio: <b>{displayMoney(Math.max(0, received - amount))}</b></div>}
                                                     {splitSucceeded.includes(leg.id) && <div className="split-payer-confirmed">Pago confirmado</div>}
@@ -1099,21 +1110,8 @@ export default function PaymentModal({
                     )}
                     </div>
                 </div>
-
-                <footer className="payment-dialog-footer">
-                    {(error || balanceError) && <div className="payment-alert error" role="alert">{error || balanceError}</div>}
-                    {notice && <div className="payment-alert warning" role="status">{notice}</div>}
-                    {!hasUsableCashShift && methods.some((method) => isCashPaymentMethodType(method.type)) && <div className="payment-cash-note"><Banknote size={16} /> Efectivo oculto: no hay turno vigente en la sucursal.</div>}
-                    <div className="payment-footer-actions">
-                        <button type="button" className="secondary" onClick={close} disabled={busy}>Cancelar</button>
-                        <button type="button" className="primary" onClick={() => void (mode === 'single' ? handleSinglePayment() : mode === 'mixed' ? handleMixedPayment() : handleSplitPayment())} disabled={busy || queuedPayment || Boolean(methodsError) || Boolean(balanceError) || balance <= 0 || (mode === 'single' && (!singleMethodId || (singleIsCash && (singleTendered === null || moneyToCents(singleTendered) < totalCents)))) || (mode === 'mixed' && !mixedValid) || (mode === 'split' && !splitValid)}>
-                            {loading ? 'Procesando…' : previewLoading ? 'Calculando…' : mode === 'single' ? 'Confirmar pago' : mode === 'mixed' ? `Confirmar ${mixedLegs.length} tramos` : `Confirmar ${splitLegs.length} pagos`}
-                        </button>
-                    </div>
-                </footer>
-            </section>
-        </div>,
-        document.body,
+            </div>
+        </FullScreenModal>
     );
 }
 

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import Select, { type GroupBase, type StylesConfig } from 'react-select';
 import AsyncSelect from 'react-select/async';
 import CreatableSelect from 'react-select/creatable';
-import { appSelectStyles } from './appSelectStyles';
+import { appSelectStyles, appSelectTheme } from './appSelectStyles';
 
 export type Opt<V> = { value: V; label: string; description?: string; isDisabled?: boolean };
 
@@ -132,6 +132,7 @@ export function AppSelect<V>(props: AppSelectProps<V>) {
     menuPortalTarget: portalTarget ?? (typeof document !== 'undefined' ? document.body : null),
     menuPosition: 'fixed' as const,
     styles,
+    theme: appSelectTheme,
     noOptionsMessage: () => noOptionsText,
     loadingMessage: () => 'Cargando…',
     formatOptionLabel: formatOption<V>,

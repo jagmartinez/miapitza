@@ -51,7 +51,8 @@ export function WaterfallChart({ steps }: { steps: BridgeStep[] }) {
           </div>
         ))}
       </div>
-      <table className="ui-visually-hidden">
+      <div className="ui-visually-hidden">
+        <table>
         <caption>{label}</caption>
         <thead><tr><th>Concepto</th><th>Monto</th></tr></thead>
         <tbody>
@@ -60,6 +61,7 @@ export function WaterfallChart({ steps }: { steps: BridgeStep[] }) {
           ))}
         </tbody>
       </table>
+      </div>
     </figure>
   );
 }

@@ -57,7 +57,9 @@ describe('RH operational UI contract', () => {
     // Pestañas de @/ui; el panel conserva su id y role="tabpanel".
     expect(myWorkforce).toContain('id="my-workforce-panel-attendance"');
     expect(myWorkforce).toContain('role="tabpanel"');
-    expect(myWorkforce).toContain("item.status === 'CANCELLED'");
+    // Cada solicitud muestra su estado autoritativo (cancelada, rechazada…) con su pastilla.
+    expect(myWorkforce).toContain('<WorkforceStatusPill status={item.status} />');
+    expect(myWorkforce).not.toContain('<StatCard');
     expect(myWorkforce).toContain('openCancel');
     expect(myWorkforce).toContain('formatHrNumber(balance.available)');
   });

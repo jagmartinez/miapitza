@@ -3,10 +3,9 @@ import axios from 'axios';
 import { tablesAPI, ordersAPI, branchesAPI, invoicesAPI, cashShiftsAPI } from '../services/api';
 import {
     AppSelect, Badge, Button, DataTable, EmptyState, Field, FormGrid, FormSection, FullScreenModal, IconButton,
-    Input, NumberInput, PageContent, PageHeader, SegmentedControl, formatMoney, formatNumber,
+    Input, NumberInput, PageContent, PageHeader, SegmentedControl, Spinner, TableToolbar, Tabs, formatMoney, formatNumber,
     type Column, type Opt, type Tone,
 } from '@/ui';
-import SalonCards from '../components/SalonCards';
 import TableDetailPanel from '../components/TableDetailPanel';
 import LegacyConsolidationReview from '../components/LegacyConsolidationReview';
 import PaymentModal from '../components/PaymentModal';
@@ -16,7 +15,7 @@ import { useAppToast } from '../context/ToastContext';
 import { canCreatePayment, canVoidKitchenLine } from '../utils/authz';
 import KitchenLineVoidModal from '../components/KitchenLineVoidModal';
 import { getTableAccess } from '../utils/tableAccess';
-import { Grid3x3, Plus, Edit2, Trash2, Eye, MapPin, MapPinned, History, Link2, ShoppingBag } from 'lucide-react';
+import { Grid3x3, Plus, Pencil, Trash2, Eye, MapPin, MapPinned, History, Link2, ShoppingBag, LayoutGrid, List, Map as MapIcon, Search } from 'lucide-react';
 import type {
     ActiveTableConsolidation,
     LegacyTableConsolidationCandidate,
@@ -51,7 +50,6 @@ import {
     renderPreInvoiceLoadingHtml,
     type PrintableInvoiceSnapshot,
 } from '../utils/invoicePrint';
-import { useNavigate } from 'react-router-dom';
 import { getApiErrorMessage } from '../utils/apiError';
 import { markErrorHandled, notifyError } from '../services/notify';
 
@@ -76,7 +74,6 @@ function extractApiError(error: unknown, fallback: string): string {
 
 export default function Tables() {
     const { user } = useAuth();
-    const navigate = useNavigate();
     const { symbol: currencySymbol } = useCurrency();
     const { confirm } = useConfirmDialog();
     const { error: showError, warning: showWarning, success: showSuccess } = useAppToast();
@@ -95,6 +92,7 @@ export default function Tables() {
     const canPay = canCreatePayment(user);
     const [tables, setTables] = useState<Table[]>([]);
     const [branches, setBranches] = useState<Branch[]>([]);
+    const [tableSearch, setTableSearch] = useState('');
     const [branchFilter, setBranchFilter] = useState<number | null>(() => user?.branchId ?? null);
     const [loading, setLoading] = useState(true);
     const [statusFilter, setStatusFilter] = useState<string | null>(null);
@@ -111,6 +109,7 @@ export default function Tables() {
     });
     const [activeTab, setActiveTab] = useState<'general' | 'ubicacion'>('general');
     const [formDirty, setFormDirty] = useState(false);
+    const [savingTable, setSavingTable] = useState(false);
 
     // Detalle de mesa (panel lateral)
     const [selectedTable, setSelectedTable] = useState<Table | null>(null);
@@ -292,6 +291,7 @@ export default function Tables() {
             return;
         }
 
+        setSavingTable(true);
         try {
             if (editingTable) {
                 // La sucursal de una mesa no se reasigna desde la edición.
@@ -316,6 +316,8 @@ export default function Tables() {
         } catch (error) {
             console.error('Error saving table:', error);
             showError(extractApiError(error, 'Error al guardar la mesa'));
+        } finally {
+            setSavingTable(false);
         }
     };
 
@@ -687,13 +689,16 @@ export default function Tables() {
         });
     }, [loadActiveConsolidation, loadFloorPlan, loadTableOrders, loadTables, selectedTable]);
 
-    const filteredTables = statusFilter
-        ? tables.filter((table) =>
-            ['AVAILABLE', 'OCCUPIED', 'PENDING_PAYMENT'].includes(statusFilter)
-                ? resolveTablePresentationState(table) === statusFilter
-                : table.status === statusFilter
-        )
-        : tables;
+    const matchesTableStatus = (table: Table, status: string | null) => !status || (
+        ['AVAILABLE', 'OCCUPIED', 'PENDING_PAYMENT'].includes(status)
+            ? resolveTablePresentationState(table) === status
+            : table.status === status
+    );
+    const tableQuery = tableSearch.trim().toLowerCase();
+    const filteredTables = tables.filter((table) => (
+        matchesTableStatus(table, statusFilter)
+        && (!tableQuery || `${table.number} ${table.location ?? ''}`.toLowerCase().includes(tableQuery))
+    ));
 
     const handleSaveLayout = async (draft: FloorPlanDraft) => {
         if (!mapBranchId) {
@@ -928,21 +933,20 @@ export default function Tables() {
     ];
 
     const tableColumns: Column<Table>[] = [
-        { key: 'number', header: 'Mesa', width: '8rem', render: (table) => `Mesa ${table.number}` },
-        ...(canChooseBranch ? [{ key: 'branch', header: 'Sucursal', width: '1fr', render: (table: Table) => table.branch?.name || '-' }] : []),
-        { key: 'capacity', header: 'Sillas / comensales', width: '12rem', type: 'number' as const, decimals: 0, accessor: (table) => table.capacity, render: (table) => `${table.capacity} ${table.capacity === 1 ? 'silla' : 'sillas'} / ${table.capacity} ${table.capacity === 1 ? 'comensal' : 'comensales'}` },
-        { key: 'location', header: 'Ubicación', width: '1fr', hideBelow: 'md' as const, render: (table) => table.location || '-' },
-        { key: 'status', header: 'Estado', width: '10rem', type: 'status' as const, render: (table) => <Badge tone={getStatusTone(table.status)} dot>{getStatusText(table.status)}</Badge> },
+        { key: 'number', header: 'Mesa', render: (table) => `Mesa ${table.number}` },
+        ...(canChooseBranch ? [{ key: 'branch', header: 'Sucursal', render: (table: Table) => table.branch?.name || '-' }] : []),
+        { key: 'capacity', header: 'Sillas / comensales', headerTitle: 'Sillas / comensales (relación 1:1)', type: 'qty' as const, decimals: 0, accessor: (table) => table.capacity },
+        { key: 'location', header: 'Ubicación', hideBelow: 'md' as const, render: (table) => table.location || '-' },
+        { key: 'status', header: 'Estado', type: 'status' as const, render: (table) => <Badge tone={getStatusTone(table.status)} dot>{getStatusText(table.status)}</Badge> },
         {
             key: 'actions',
             header: 'Acciones',
-            width: '8rem',
             type: 'actions' as const,
             render: (table) => (
                 <>
-                    <IconButton icon={Eye} label={`Ver órdenes de la mesa ${table.number}`} onClick={() => void handleViewOrders(table)} />
-                    {canEditTable && <IconButton icon={Edit2} label={`Editar mesa ${table.number}`} onClick={() => handleOpenSidebar(table)} />}
-                    {canDeleteTable && <IconButton icon={Trash2} label={`Eliminar mesa ${table.number}`} onClick={() => void handleDelete(table.id)} />}
+                    <IconButton size="sm" icon={Eye} tooltip="Ver detalle" label={`Ver órdenes de la mesa ${table.number}`} onClick={() => void handleViewOrders(table)} />
+                    {canEditTable && <IconButton size="sm" icon={Pencil} tooltip="Editar" label={`Editar mesa ${table.number}`} onClick={() => handleOpenSidebar(table)} />}
+                    {canDeleteTable && <IconButton size="sm" icon={Trash2} tone="danger" tooltip="Eliminar" label={`Eliminar mesa ${table.number}`} onClick={() => void handleDelete(table.id)} />}
                 </>
             ),
         },
@@ -979,7 +983,13 @@ export default function Tables() {
         return meta;
     }, [openOrders, metaNow]);
 
-    if (loading) return <div className="tables-loading">Cargando...</div>;
+    if (loading) {
+        return (
+            <div className="tables-loading">
+                <Spinner size={28} label="Cargando mesas" />
+            </div>
+        );
+    }
 
     const areaNames = new Map((floorPlan?.areas ?? []).map((area) => [area.id, area.name]));
     const zoneOf = (table: Table) => (table.floorAreaId != null ? areaNames.get(table.floorAreaId) : undefined)
@@ -995,11 +1005,27 @@ export default function Tables() {
         ? tables.find((table) => table.id === selectedTable.id) ?? selectedTable
         : null;
     const selectedMeta = liveSelectedTable ? tableMeta?.get(liveSelectedTable.id) : undefined;
-    const viewOptions: { value: TablesView; label: string }[] = [
-        { value: 'tiles', label: 'Mesas' },
-        { value: 'plan', label: 'Plano' },
-        ...(canCreateTable || canEditTable || canDeleteTable ? [{ value: 'list' as const, label: 'Lista' }] : []),
+    const viewOptions = [
+        { value: 'tiles' as const, label: 'Mesas', icon: LayoutGrid },
+        { value: 'plan' as const, label: 'Plano', icon: MapIcon },
+        ...(canCreateTable || canEditTable || canDeleteTable ? [{ value: 'list' as const, label: 'Lista', icon: List }] : []),
     ];
+    const viewSwitch = (
+        <SegmentedControl<TablesView> ariaLabel="Vista de mesas" iconOnly options={viewOptions} value={view} onChange={changeView} />
+    );
+    // Plano a pantalla completa: sin encabezado de página; título, vista y acciones viajan en la barra del plano.
+    const planFull = view === 'plan' && Boolean(mapBranchId) && floorPlan !== null;
+    const opsActions = (
+        <>
+            {canConsolidate && (
+                <Button icon={History} onClick={openLegacyReview}>Históricos</Button>
+            )}
+            <KitchenNotificationBell inline />
+            {canOperatePOS && (
+                <Button variant="primary" icon={ShoppingBag} onClick={handleOpenTakeout}>Orden para llevar</Button>
+            )}
+        </>
+    );
 
     const branchControl = canChooseBranch && branches.length > 1 ? (
         <div className="table-map-branch-control">
@@ -1061,7 +1087,7 @@ export default function Tables() {
     };
 
     return (
-        <div className={`tables-page ${showMap ? (view === 'plan' ? 'tables-page--map' : 'tables-page--ops') : 'tables-page--list'}`}>
+        <div className={`tables-page ${showMap ? (planFull ? 'tables-page--map' : 'tables-page--ops') : 'tables-page--list'}`}>
             {!showMap && (
                 <PageContent>
                     <PageHeader
@@ -1069,7 +1095,7 @@ export default function Tables() {
                         description="Alta, edición y estado administrativo de las mesas"
                         actions={(
                             <>
-                                <SegmentedControl<TablesView> ariaLabel="Vista de mesas" options={viewOptions} value={view} onChange={changeView} />
+                                {viewSwitch}
                                 {canConsolidate && (
                                     <Button icon={History} onClick={openLegacyReview}>Históricos</Button>
                                 )}
@@ -1080,32 +1106,43 @@ export default function Tables() {
                         )}
                     />
 
-                    <div className="tables-filters-row">
-                        <SegmentedControl
-                            ariaLabel="Estado de la mesa"
-                            options={statusSegments}
-                            value={statusFilter ?? 'ALL'}
-                            onChange={(value) => setStatusFilter(value === 'ALL' ? null : value)}
+                    <Tabs
+                        ariaLabel="Estado de la mesa"
+                        tabs={statusSegments.map((segment) => ({
+                            id: segment.value,
+                            label: segment.label,
+                            badge: tables.filter((table) => matchesTableStatus(table, segment.value === 'ALL' ? null : segment.value)).length,
+                        }))}
+                        active={statusFilter ?? 'ALL'}
+                        onChange={(value) => setStatusFilter(value === 'ALL' ? null : value)}
+                    />
+
+                    <TableToolbar>
+                        <Input
+                            type="search"
+                            prefix={<Search size={16} aria-hidden="true" />}
+                            aria-label="Buscar mesas por número o ubicación"
+                            placeholder="Buscar por número o ubicación..."
+                            value={tableSearch}
+                            onChange={(e) => setTableSearch(e.target.value)}
                         />
                         {canChooseBranch && branches.length > 1 && (
-                            <div className="tables-branch-filter">
-                                <AppSelect<number>
-                                    aria-label="Filtrar por sucursal"
-                                    placeholder="Todas las sucursales"
-                                    options={branchOptions}
-                                    value={branchFilter}
-                                    onChange={setBranchFilter}
-                                />
-                            </div>
+                            <AppSelect<number>
+                                aria-label="Filtrar por sucursal"
+                                placeholder="Todas las sucursales"
+                                options={branchOptions}
+                                value={branchFilter}
+                                onChange={setBranchFilter}
+                            />
                         )}
-                    </div>
+                    </TableToolbar>
 
                     <DataTable
                         ariaLabel="Mesas"
                         columns={tableColumns}
                         rows={filteredTables}
                         rowKey={(table) => table.id}
-                        resetKey={`${statusFilter}-${branchFilter}`}
+                        resetKey={`${statusFilter}-${branchFilter}-${tableQuery}`}
                         empty={(
                             <EmptyState
                                 icon={Grid3x3}
@@ -1126,41 +1163,42 @@ export default function Tables() {
 
             {showMap && (
                 <div className="tables-ops">
-                    <header className="tables-ops__header">
-                        <div className="tables-ops__title">
-                            <h1>Mesas</h1>
-                            <p>{mapBranchName}{activeZone !== 'ALL' ? ` · ${activeZone}` : ''}</p>
-                        </div>
-                        {view === 'tiles' && zones.length > 1 && (
-                            <SegmentedControl
-                                ariaLabel="Zona"
-                                options={[{ value: 'ALL', label: 'Todas' }, ...zones.map((zone) => ({ value: zone, label: zone }))]}
-                                value={activeZone}
-                                onChange={setZoneFilter}
-                            />
-                        )}
-                        <SegmentedControl<TablesView> ariaLabel="Vista de mesas" options={viewOptions} value={view} onChange={changeView} />
-                        {branchControl}
-                        <div className="table-map-utility-controls">
-                            {canConsolidate && (
-                                <Button icon={History} onClick={openLegacyReview}>Históricos</Button>
+                    {!planFull && (
+                        <PageHeader
+                            title="Mesas"
+                            description={`${mapBranchName}${activeZone !== 'ALL' ? ` · ${activeZone}` : ''}`}
+                            actions={(
+                                <>
+                                    {viewSwitch}
+                                    {opsActions}
+                                </>
                             )}
-                            <KitchenNotificationBell inline />
-                        </div>
-                        {canOperatePOS && (
-                            <Button variant="primary" icon={ShoppingBag} onClick={handleOpenTakeout}>Orden para llevar</Button>
-                        )}
-                    </header>
+                        />
+                    )}
 
-                    <SalonCards branchId={mapBranchId} tables={tables} onReviewOrders={() => navigate('/orders')} />
+                    {!planFull && (branchControl || (view === 'tiles' && zones.length > 1)) && (
+                        <TableToolbar>
+                            {branchControl}
+                            {view === 'tiles' && zones.length > 1 && (
+                                <AppSelect<string>
+                                    aria-label="Filtrar por zona"
+                                    options={[{ value: 'ALL', label: 'Todas las zonas' }, ...zones.map((zone) => ({ value: zone, label: zone }))]}
+                                    value={activeZone}
+                                    onChange={(value) => setZoneFilter(value ?? 'ALL')}
+                                    isClearable={false}
+                                />
+                            )}
+                        </TableToolbar>
+                    )}
 
                     <div className="tables-ops__body">
                         <section className="tables-ops__floor" aria-label="Plano de mesas">
                             {!mapBranchId ? (
-                                <div className="table-map-branch-required">
-                                    <MapPinned size={24} />
-                                    Selecciona una sucursal para visualizar y operar sus mesas.
-                                </div>
+                                <EmptyState
+                                    icon={MapPinned}
+                                    title="Selecciona una sucursal"
+                                    description="Selecciona una sucursal para visualizar y operar sus mesas."
+                                />
                             ) : view === 'tiles' ? (
                                 <>
                                     <ul className="tables-legend" aria-label="Estados de mesa">
@@ -1196,14 +1234,21 @@ export default function Tables() {
                                     onSelect={handleViewOrders}
                                     onSave={handleSaveLayout}
                                     onCreateTable={canCreateTable ? () => handleOpenSidebar() : undefined}
-                                    branchControl={undefined}
+                                    heading={(
+                                        <div className="tables-plan-heading">
+                                            <h1 className="tables-plan-heading__title">Mesas</h1>
+                                            {viewSwitch}
+                                        </div>
+                                    )}
+                                    branchControl={branchControl}
+                                    extraActions={opsActions}
                                 />
                             ) : (
                                 <p className="tables-meta-warning" role="status">Cargando plano…</p>
                             )}
                         </section>
 
-                        <div ref={detailPanelRef} className="tables-ops__detail">
+                        <div ref={detailPanelRef} className={`tables-ops__detail ${view === 'plan' && !liveSelectedTable ? 'is-idle' : ''}`}>
                             <TableDetailPanel
                                 table={liveSelectedTable}
                                 orders={tableOrders}
@@ -1250,7 +1295,7 @@ export default function Tables() {
                                 }}
                                 onReverseConsolidation={handleReverseConsolidation}
                                 extraActions={liveSelectedTable && canEditTable ? (
-                                    <Button variant="ghost" icon={Edit2} onClick={() => handleOpenSidebar(liveSelectedTable)}>Editar mesa</Button>
+                                    <Button variant="ghost" icon={Pencil} onClick={() => handleOpenSidebar(liveSelectedTable)}>Editar mesa</Button>
                                 ) : undefined}
                             />
                         </div>
@@ -1263,6 +1308,9 @@ export default function Tables() {
                 onClose={() => setIsLegacyReviewOpen(false)}
                 title="Consolidaciones históricas"
                 subtitle="Inventario de operaciones anteriores al registro transaccional reversible."
+                footer={({ requestClose }: { requestClose(): void }) => (
+                    <Button variant="secondary" onClick={requestClose}>Cerrar</Button>
+                )}
             >
                 <LegacyConsolidationReview
                     inventory={legacyInventory}
@@ -1285,7 +1333,7 @@ export default function Tables() {
                 footer={({ requestClose }) => (
                     <>
                         <Button variant="secondary" onClick={requestClose}>Cancelar</Button>
-                        <Button type="submit" form="table-form" variant="primary">
+                        <Button type="submit" form="table-form" variant="primary" loading={savingTable}>
                             {editingTable ? 'Actualizar mesa' : 'Guardar mesa'}
                         </Button>
                     </>

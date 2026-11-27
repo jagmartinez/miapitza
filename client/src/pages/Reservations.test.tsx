@@ -26,23 +26,32 @@ vi.mock('../hooks/useCurrency', () => ({ useCurrency: () => ({ symbol: 'C$', for
 import Reservations from './Reservations';
 
 describe('Reservations (design system)', () => {
-    it('usa PageHeader, DataTable y la tarjeta de próxima reserva con la mesa que debe liberarse', async () => {
+    it('usa el patrón estándar: PageHeader, pestañas de estado con conteo, vista solo-icono y DataTable sin tarjetas', async () => {
         upcoming.mockResolvedValue({ data: { data: rows } });
         render(<Reservations />);
         expect(await screen.findByRole('heading', { level: 1, name: 'Reservaciones' })).toBeInTheDocument();
         const table = await screen.findByRole('table', { name: 'Reservaciones' });
         expect(within(table).getByText('Luis Pérez')).toBeInTheDocument();
-        const card = await screen.findByRole('region', { name: 'Próxima reserva' });
-        expect(card).toHaveTextContent('Luis Pérez');
-        expect(await within(card).findByText(/sigue ocupada: debe liberarse/)).toBeInTheDocument();
+        const tabs = screen.getByRole('tablist', { name: 'Estado de la reservación' });
+        expect(within(tabs).getByRole('tab', { name: 'Todas 2' })).toHaveAttribute('aria-selected', 'true');
+        expect(within(tabs).getByRole('tab', { name: 'Pendientes 1' })).toBeInTheDocument();
+        expect(within(tabs).getByRole('tab', { name: 'Confirmadas 1' })).toBeInTheDocument();
+        const views = screen.getByRole('group', { name: 'Vista de reservaciones' });
+        expect(within(views).getByRole('button', { name: 'Tabla' })).toBeInTheDocument();
+        expect(within(views).getByRole('button', { name: 'Calendario' })).toBeInTheDocument();
+        // Las métricas del salón viven en el dashboard, no en la vista operativa.
+        expect(screen.queryByRole('group', { name: 'Indicadores del salón' })).toBeNull();
+        expect(screen.queryByRole('region', { name: 'Próxima reserva' })).toBeNull();
+        expect(upcoming).not.toHaveBeenCalled();
     });
 
-    it('muestra N/D (no 0) si la próxima reserva no se pudo cargar', async () => {
-        upcoming.mockRejectedValue(new Error('down'));
+    it('filtra por estado con las pestañas', async () => {
         render(<Reservations />);
-        const card = await screen.findByRole('region', { name: 'Próxima reserva' });
-        await within(card).findByText('N/D');
-        expect(card).toHaveTextContent('No disponible');
+        const table = await screen.findByRole('table', { name: 'Reservaciones' });
+        await within(table).findByText('Luis Pérez');
+        await userEvent.click(screen.getByRole('tab', { name: 'Pendientes 1' }));
+        expect(within(table).queryByText('Luis Pérez')).toBeNull();
+        expect(within(table).getByText('Marta Gómez')).toBeInTheDocument();
     });
 
     it('abre el formulario en FullScreenModal con pestañas', async () => {

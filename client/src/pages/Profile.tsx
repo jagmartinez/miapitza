@@ -190,8 +190,8 @@ export default function Profile() {
     );
 
     const activityColumns: Column<ActivityEntry>[] = [
-        { key: 'description', header: 'Descripción', width: '2fr' },
-        { key: 'date', header: 'Fecha', render: (a) => new Date(a.date).toLocaleString('es-MX') },
+        { key: 'description', header: 'Descripción' },
+        { key: 'date', header: 'Fecha', type: 'date', render: (a) => new Date(a.date).toLocaleString('es-MX') },
         { key: 'amount', header: 'Monto', type: 'money', render: (a) => money(a.amount) },
         { key: 'status', header: 'Estado', type: 'status', render: (a) => <Badge tone={toneFor(String(a.status).toUpperCase())} dot>{a.status}</Badge> },
     ];

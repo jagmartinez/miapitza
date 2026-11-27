@@ -13,9 +13,11 @@
 .ui-button--secondary:hover:not(:disabled) { background: var(--ui-surface-2); }
 .ui-button--ghost { background: transparent; color: var(--ui-text); }
 .ui-button--ghost:hover:not(:disabled) { background: var(--ui-surface-2); }
-.ui-button--danger { background: var(--ui-danger); color: var(--ui-primary-fg); }
+.ui-button--danger { background: var(--ui-danger); color: var(--ui-danger-fg); }
 .ui-button--danger:hover:not(:disabled) { filter: brightness(.92); }
 .ui-button:disabled, .ui-icon-button:disabled { opacity: .55; cursor: not-allowed; }
+.ui-button:focus-visible { outline: 2px solid var(--ui-primary); outline-offset: 2px; }
+.ui-button > svg { flex: none; }
 
 .ui-icon-button { background: transparent; color: var(--ui-text-muted); padding: 0; }
 .ui-icon-button:hover:not(:disabled) { background: var(--ui-surface-2); color: var(--ui-text); }
@@ -44,3 +46,20 @@
 }
 @keyframes ui-pulse { 50% { opacity: .5; } }
 @media (prefers-reduced-motion: reduce) { .ui-spinner, .ui-skeleton { animation: none; } }
+
+/* Botones de icono: borde sutil para que se lean como botón; tono por intención. */
+.ui-icon-button { border-color: transparent; }
+.ui-icon-button:focus-visible { outline: 2px solid var(--ui-primary); outline-offset: 1px; }
+.ui-icon-button--primary { color: var(--ui-primary); }
+.ui-icon-button--primary:hover:not(:disabled) { background: var(--ui-primary-soft); color: var(--ui-primary); }
+.ui-icon-button--danger:hover:not(:disabled) { background: var(--ui-danger-soft); color: var(--ui-danger); }
+.ui-cell--actions .ui-icon-button { border-color: var(--ui-border); background: var(--ui-surface); }
+.ui-cell--actions .ui-icon-button:hover:not(:disabled) { border-color: currentColor; }
+
+.ui-tooltip {
+  position: fixed; z-index: var(--ui-z-toast); pointer-events: none;
+  max-width: 16rem; padding: 4px var(--ui-space-2);
+  border-radius: var(--ui-radius-sm); background: var(--ui-text); color: var(--ui-bg);
+  font-size: var(--ui-text-xs); font-weight: 500; line-height: 1.35; white-space: nowrap;
+  box-shadow: 0 4px 12px var(--ui-overlay);
+}

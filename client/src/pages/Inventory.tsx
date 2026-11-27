@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { autoPurchaseOrdersAPI, branchesAPI, productsAPI, inventoryMovementsAPI, categoriesAPI, stockAlertsAPI, suppliersAPI, unitsAPI, settingsAPI } from '../services/api';
+import { autoPurchaseOrdersAPI, branchesAPI, productsAPI, inventoryMovementsAPI, categoriesAPI, suppliersAPI, unitsAPI, settingsAPI } from '../services/api';
 // import Input from '../components/Input';
 import { ToastContainer } from '../components/Toast';
 import { useToast } from '../hooks/useToast';
@@ -8,26 +8,24 @@ import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { hasAnyRole } from '../utils/authz';
 import {
-    AlertTriangle, Package, Plus, Edit2, Trash2,
-    Activity, ShoppingBag, Layers, Truck, DollarSign, FileText,
+    AlertTriangle, Package, Plus, Pencil, Trash2,
+    Activity, ShoppingBag, Layers, FileText,
     Upload, Download, FileSpreadsheet, Search, Printer,
-    FlaskConical, Box, Eye
+    Eye
 } from 'lucide-react';
-import type { AutoPurchaseSuggestion, Branch, Product, ProductAllowedUnit, StockAlertItem, Supplier, UnitOfMeasure, Warehouse } from '../types';
+import type { AutoPurchaseSuggestion, Branch, Product, ProductAllowedUnit, Supplier, UnitOfMeasure, Warehouse } from '../types';
 import { formatCurrency, getCurrencySymbol, type CurrencySettings } from '../utils/currency';
 import { useCurrency } from '../hooks/useCurrency';
 import { isCategoryVisibleInInventory } from '../utils/categoryVisibility';
 import { resolveEffectiveUnitCost, type ProductCostResolution } from '../utils/productCost';
 import { newIdempotencyKey } from '../utils/idempotency';
-import './Inventory.css';
 import s from './Inventory.module.css';
-import { computeInventoryKpis } from '../utils/inventoryKpis';
 import { buildWarehouseBreakdown, type WarehouseStockInput } from '../utils/inventoryWarehouses';
 import { buildInventoryCountSheetHtml } from '../utils/inventoryCountSheet';
 import catalog from './catalog.module.css';
 import {
-    AppSelect, Button, Checkbox, SegmentedControl, Field, FormGrid, FormSection, FullScreenModal, Badge, DataTable, EmptyState, IconButton, Input, PageContent,
-    PageHeader, StatCard, TableToolbar, Textarea, formatNumber, formatPercent, type Column,
+    AppSelect, Button, Checkbox, Tabs, Field, FormGrid, FormSection, FullScreenModal, Badge, DataTable, EmptyState, IconButton, Input, PageContent,
+    PageHeader, TableToolbar, Textarea, Tooltip, formatNumber, type Column,
 } from '@/ui';
 import { getApiErrorMessage } from '../utils/apiError';
 
@@ -59,9 +57,9 @@ function toAutoPurchaseLine(suggestion: AutoPurchaseSuggestionLine) {
 function formatSuggestionQuantity(suggestion: AutoPurchaseSuggestionLine) {
     const purchaseQuantity = Number(suggestion.purchaseQuantity);
     if (Number.isFinite(purchaseQuantity) && purchaseQuantity > 0 && suggestion.purchaseUnit) {
-        return `${Number(purchaseQuantity.toFixed(3))} ${suggestion.purchaseUnit}`;
+        return `${formatNumber(purchaseQuantity)} ${suggestion.purchaseUnit}`;
     }
-    return `${Number(Number(suggestion.suggestedQuantity).toFixed(3))}${suggestion.unit ? ` ${suggestion.unit}` : ''}`;
+    return `${formatNumber(suggestion.suggestedQuantity)}${suggestion.unit ? ` ${suggestion.unit}` : ''}`;
 }
 
 
@@ -228,8 +226,6 @@ export default function Inventory() {
     const [allUnits, setAllUnits] = useState<UnitOfMeasure[]>([]);
     const { symbol } = useCurrency();
     const [settings, setSettings] = useState<CurrencySettings>({});
-    const [stockAlerts, setStockAlerts] = useState<StockAlertItem[]>([]);
-    const [stockAlertSummary, setStockAlertSummary] = useState<{ criticalAlerts?: number; warningAlerts?: number } | null>(null);
     const [loadIssues, setLoadIssues] = useState<Record<string, string>>({});
 
     const setLoadIssue = useCallback((area: string, error?: unknown) => {
@@ -339,12 +335,10 @@ export default function Inventory() {
         const results = await Promise.allSettled([
             productsAPI.getAll({ active: true, limit: 500 }),
             productsAPI.getLowStock(),
-            stockAlertsAPI.getAll(),
-            stockAlertsAPI.getSummary(),
             autoPurchaseOrdersAPI.getSuggestions()
         ]);
 
-        const [productsRes, lowStockRes, alertsRes, alertSummaryRes, suggestionsRes] = results;
+        const [productsRes, lowStockRes, suggestionsRes] = results;
 
         if (productsRes.status === 'fulfilled') {
             setProducts(productsRes.value.data.data || []);
@@ -358,18 +352,6 @@ export default function Inventory() {
             setLoadIssue('Stock bajo');
         } else {
             setLoadIssue('Stock bajo', lowStockRes.reason);
-        }
-        if (alertsRes.status === 'fulfilled') {
-            setStockAlerts(alertsRes.value.data.data || []);
-            setLoadIssue('Alertas');
-        } else {
-            setLoadIssue('Alertas', alertsRes.reason);
-        }
-        if (alertSummaryRes.status === 'fulfilled') {
-            setStockAlertSummary(alertSummaryRes.value.data.data || null);
-            setLoadIssue('Resumen de alertas');
-        } else {
-            setLoadIssue('Resumen de alertas', alertSummaryRes.reason);
         }
         if (suggestionsRes.status === 'fulfilled') {
             setAutoPurchaseSuggestions(suggestionsRes.value.data.data?.suggestions || []);
@@ -826,33 +808,11 @@ export default function Inventory() {
 
 
     const isLowStockProduct = (id: number) => lowStock.some((p) => p.id === id);
-    const kpis = useMemo(() => computeInventoryKpis(products as ProductInventory[]), [products]);
+    const productsFailed = 'Productos' in loadIssues;
     const warehouseBreakdown = useMemo(
         () => buildWarehouseBreakdown(warehouseStocks, products as ProductInventory[]),
         [warehouseStocks, products],
     );
-    const warehouseValueContext = warehouseBreakdown.valueByWarehouse.length > 0
-        ? warehouseBreakdown.valueByWarehouse.slice(0, 3).map((w) => `${w.name}: ${formatNumber(w.value)}`).join(' · ')
-        : 'Sin existencias valorizadas por almacén';
-    const productsTruncated = products.length >= 500;
-    const productsFailed = 'Productos' in loadIssues;
-    const unknownCostCount = Math.max(kpis.unknownCostCount, warehouseBreakdown.unknownCostCount);
-    const unknownCostNote = unknownCostCount > 0
-        ? `${unknownCostCount} ${unknownCostCount === 1 ? 'producto sin costo excluido' : 'productos sin costo excluidos'}`
-        : '';
-    const alertContext = (() => {
-        const critical = Number(stockAlertSummary?.criticalAlerts ?? 0);
-        const warning = Number(stockAlertSummary?.warningAlerts ?? 0);
-        if (critical + warning === 0) return '';
-        const byWarehouse = new Map<string, number>();
-        for (const a of stockAlerts) {
-            if (a.priority === 'URGENT' || Number(a.currentStock) === 0) {
-                byWarehouse.set(a.warehouseName, (byWarehouse.get(a.warehouseName) ?? 0) + 1);
-            }
-        }
-        const top = [...byWarehouse.entries()].sort((a, b) => b[1] - a[1])[0];
-        return `${critical} ${critical === 1 ? 'alerta crítica' : 'alertas críticas'}${top ? ` (más en ${top[0]})` : ''}, ${warning} ${warning === 1 ? 'preventiva' : 'preventivas'}`;
-    })();
 
     const categoryFilterOptions = [
         { value: 'all', label: 'Todas las categorías' },
@@ -871,33 +831,11 @@ export default function Inventory() {
             <PageHeader
                 title="Inventario"
                 description="Existencias valorizadas por bodega, costo promedio ponderado."
-                actions={(
-                    <>
-                        <Button icon={Printer} onClick={handlePrintInventory}>Imprimir</Button>
-                        {canMutateProduct && (
-                            <Button icon={Download} onClick={handleDownloadTemplate}>Plantilla Excel</Button>
-                        )}
-                        {canMutateProduct && (
-                            <Button icon={Upload} onClick={() => { setShowImportSidebar(true); setImportFile(null); setImportValidation(null); }}>
-                                Importar Excel
-                            </Button>
-                        )}
-                        {canCreateAutoPO && (
-                            <Button
-                                icon={FileText}
-                                onClick={() => setShowAutoPurchaseSidebar(true)}
-                                disabled={autoPurchaseSuggestions.length === 0}
-                            >
-                                Crear OC sugerida
-                            </Button>
-                        )}
-                        {canMutateProduct && (
-                            <Button variant="primary" icon={Plus} onClick={() => handleOpenSidebar()}>
-                                Nuevo producto
-                            </Button>
-                        )}
-                    </>
-                )}
+                actions={canMutateProduct ? (
+                    <Button variant="primary" icon={Plus} onClick={() => handleOpenSidebar()}>
+                        Nuevo producto
+                    </Button>
+                ) : undefined}
             />
 
             {Object.keys(loadIssues).length > 0 && (
@@ -928,43 +866,72 @@ export default function Inventory() {
                 </div>
             )}
 
-            <div className={catalog.kpiGrid}>
-                {productsFailed ? (
+            <Tabs
+                ariaLabel="Filtrar por tipo"
+                active={filter}
+                onChange={(id) => setFilter(id as typeof filter)}
+                tabs={[
+                    { id: 'all', label: 'Todos', badge: productsFailed ? undefined : (products.length >= 500 ? '500+' : products.length) },
+                    { id: 'INGREDIENT', label: 'Ingredientes', badge: productsFailed ? undefined : products.filter((p) => p.type === 'INGREDIENT').length },
+                    { id: 'PRODUCT_FOR_SALE', label: 'Productos', badge: productsFailed ? undefined : products.filter((p) => p.type === 'PRODUCT_FOR_SALE').length },
+                    { id: 'INTERMEDIATE', label: 'Intermedios', badge: productsFailed ? undefined : products.filter((p) => p.type === 'INTERMEDIATE').length },
+                    { id: 'PACKAGING', label: 'Empaques', badge: productsFailed ? undefined : products.filter((p) => p.type === 'PACKAGING').length },
+                    {
+                        id: 'low',
+                        label: 'Stock bajo',
+                        badge: productsFailed || 'Stock bajo' in loadIssues ? undefined : products.filter((p) => isLowStockProduct(p.id)).length,
+                    },
+                ]}
+            />
+
+            <TableToolbar
+                actions={(
                     <>
-                        <StatCard label="Valor del inventario (C$)" value="No disponible" tone="neutral" context="No se pudieron cargar los productos" />
-                        <StatCard label="Reposición requerida (C$)" value="No disponible" tone="neutral" context={[alertContext, 'No se pudieron cargar los productos'].filter(Boolean).join(' · ')} />
-                        <StatCard label="Concentración del capital" value="No disponible" tone="neutral" context="No se pudieron cargar los productos" />
-                    </>
-                ) : (
-                    <>
-                        <StatCard
-                            label="Valor del inventario (C$)"
-                            value={loading ? '…' : formatNumber(kpis.totalValue)}
-                            context={[warehouseValueContext, unknownCostNote].filter(Boolean).join(' · ') + (productsTruncated ? ' (primeros 500 productos)' : '')}
-                        />
-                        <StatCard
-                            label="Reposición requerida (C$)"
-                            value={loading ? '…' : formatNumber(kpis.replenishmentCost)}
-                            tone={kpis.belowMinCount > 0 ? 'warning' : 'success'}
-                            context={[
-                                kpis.belowMinCount > 0
-                                    ? `${kpis.belowMinCount} bajo mínimo, ${kpis.outOfStockCount} agotados${kpis.outOfStockNames.length > 0 ? ` (${kpis.outOfStockNames.join(', ')}${kpis.outOfStockCount > kpis.outOfStockNames.length ? '…' : ''})` : ''}`
-                                    : 'Ningún producto bajo el mínimo',
-                                alertContext,
-                                unknownCostNote,
-                            ].filter(Boolean).join(' · ') + (productsTruncated ? ' · primeros 500 productos' : '')}
-                            action={canCreateAutoPO && autoPurchaseSuggestions.length > 0
-                                ? { label: 'Generar orden de compra sugerida', onClick: () => setShowAutoPurchaseSidebar(true) }
-                                : undefined}
-                        />
-                        <StatCard
-                            label="Concentración del capital"
-                            value={loading ? '…' : formatPercent(kpis.concentrationPct)}
-                            context={[kpis.topNames.length > 0 ? `En: ${kpis.topNames.join(', ')}` : 'Sin existencias valorizadas', unknownCostNote].filter(Boolean).join(' · ')}
-                        />
+                        <Button icon={Printer} onClick={handlePrintInventory}>Imprimir</Button>
+                        {canMutateProduct && (
+                            <Button icon={Download} onClick={handleDownloadTemplate}>Plantilla Excel</Button>
+                        )}
+                        {canMutateProduct && (
+                            <Button icon={Upload} onClick={() => { setShowImportSidebar(true); setImportFile(null); setImportValidation(null); }}>
+                                Importar Excel
+                            </Button>
+                        )}
+                        {canCreateAutoPO && (
+                            <Button
+                                icon={FileText}
+                                onClick={() => setShowAutoPurchaseSidebar(true)}
+                                disabled={autoPurchaseSuggestions.length === 0}
+                            >
+                                Crear OC sugerida
+                            </Button>
+                        )}
                     </>
                 )}
-            </div>
+            >
+                <Input
+                    type="search"
+                    aria-label="Buscar producto"
+                    placeholder="Buscar por código o producto"
+                    prefix={<Search size={14} aria-hidden="true" />}
+                    value={searchQuery}
+                    onChange={e => setSearchQuery(e.target.value)}
+                />
+                <AppSelect
+                    aria-label="Filtrar por categoría"
+                    isClearable={false}
+                    options={categoryFilterOptions}
+                    value={selectedCategory}
+                    onChange={(v) => setSelectedCategory(v || 'all')}
+                />
+                <AppSelect
+                    aria-label="Filtrar por almacenamiento"
+                    isClearable={false}
+                    isSearchable={false}
+                    options={storageFilterOptions}
+                    value={storageFilter}
+                    onChange={(v) => setStorageFilter(v || 'all')}
+                />
+            </TableToolbar>
 
             <DataTable<ProductInventory>
                 ariaLabel="Inventario de productos"
@@ -989,104 +956,57 @@ export default function Inventory() {
                         ) : undefined}
                     />
                 )}
-                toolbar={(
-                    <div className={s.toolbarStack}>
-                    <TableToolbar>
-                        <Input
-                            type="search"
-                            aria-label="Buscar producto"
-                            placeholder="Buscar por código o producto"
-                            prefix={<Search size={14} aria-hidden="true" />}
-                            value={searchQuery}
-                            onChange={e => setSearchQuery(e.target.value)}
-                        />
-                        <AppSelect
-                            aria-label="Filtrar por categoría"
-                            isClearable={false}
-                            options={categoryFilterOptions}
-                            value={selectedCategory}
-                            onChange={(v) => setSelectedCategory(v || 'all')}
-                        />
-                        <AppSelect
-                            aria-label="Filtrar por almacenamiento"
-                            isClearable={false}
-                            isSearchable={false}
-                            options={storageFilterOptions}
-                            value={storageFilter}
-                            onChange={(v) => setStorageFilter(v || 'all')}
-                        />
-                    </TableToolbar>
-                        <div className={s.segmentWrap}>
-                            <SegmentedControl
-                                ariaLabel="Filtrar por tipo"
-                                value={filter}
-                                onChange={setFilter}
-                                options={[
-                                    { value: 'all', label: 'Todos' },
-                                    { value: 'INGREDIENT', label: 'Ingredientes' },
-                                    { value: 'PRODUCT_FOR_SALE', label: 'Productos' },
-                                    { value: 'INTERMEDIATE', label: 'Intermedios' },
-                                    { value: 'PACKAGING', label: 'Empaques' },
-                                    { value: 'low', label: 'Stock bajo' },
-                                ]}
-                            />
-                        </div>
-                    </div>
-                )}
                 columns={[
-                    { key: 'sku', header: 'Código', width: 'minmax(7.5rem,.8fr)', render: (product) => product.sku || '—' },
-                    { key: 'name', header: 'Producto', width: '2.4fr', render: (product) => product.name },
-                    { key: 'category', header: 'Categoría', width: '1.2fr', render: (product) => categories.find((c) => c.id === product.categoryId)?.name || '—' },
-                    { key: 'warehouse', header: 'Bodega', width: '1.1fr', render: (product) => warehouseBreakdown.labelByProduct.get(product.id) ?? '—' },
-                    { key: 'stock', header: 'Existencia', width: '1fr', type: 'qty', accessor: (product) => product.totalStock ?? 0 },
-                    { key: 'unit', header: 'Unidad', width: '.6fr', render: (product) => product.baseUnit?.abbreviation || product.unit },
-                    { key: 'cost', header: 'Costo (C$)', width: '1fr', type: 'money', accessor: (product) => inventoryCostQuality(product).value, render: (product) => (inventoryCostQuality(product).known ? formatNumber(inventoryCostQuality(product).value) : 'N/D') },
-                    { key: 'value', header: 'Valor (C$)', width: '1.2fr', type: 'money', total: true, accessor: (product) => (inventoryCostQuality(product).known ? Number(product.totalStock ?? 0) * inventoryCostQuality(product).value : null), render: (product) => (inventoryCostQuality(product).known ? formatNumber(Number(product.totalStock ?? 0) * inventoryCostQuality(product).value) : 'N/D') },
-                    { key: 'status', header: 'Estado', width: '1fr', type: 'status', render: (product) => (
+                    { key: 'sku', header: 'Código', render: (product) => product.sku || '—' },
+                    { key: 'name', header: 'Producto', type: 'text', render: (product) => (
+                        <span className={s.cellStack}>
+                            <span>{product.name}</span>
+                            {(() => {
+                                const where = warehouseBreakdown.labelByProduct.get(product.id);
+                                return where && !/^[-—]$/.test(where.trim()) ? <span className={s.cellSub}>{where}</span> : null;
+                            })()}
+                        </span>
+                    ) },
+                    { key: 'category', header: 'Categoría', render: (product) => categories.find((c) => c.id === product.categoryId)?.name || '—' },
+                    { key: 'stock', header: 'Existencia', type: 'qty', accessor: (product) => product.totalStock ?? 0, render: (product) => `${formatNumber(product.totalStock ?? 0)} ${product.baseUnit?.abbreviation || product.unit || ''}`.trim() },
+                    { key: 'cost', header: 'Costo (C$)', type: 'money', accessor: (product) => inventoryCostQuality(product).value, render: (product) => (inventoryCostQuality(product).known ? formatNumber(inventoryCostQuality(product).value) : 'N/D') },
+                    { key: 'value', header: 'Valor (C$)', type: 'money', total: true, accessor: (product) => (inventoryCostQuality(product).known ? Number(product.totalStock ?? 0) * inventoryCostQuality(product).value : null), render: (product) => (inventoryCostQuality(product).known ? formatNumber(Number(product.totalStock ?? 0) * inventoryCostQuality(product).value) : 'N/D') },
+                    { key: 'status', header: 'Estado', type: 'status', render: (product) => (
                         <Badge tone={isLowStockProduct(product.id) ? 'warning' : 'success'} dot>
                             {isLowStockProduct(product.id) ? 'Stock bajo' : 'OK'}
                         </Badge>
                     ) },
-                    { key: 'actions', header: 'Acciones', width: 'minmax(12rem, auto)', type: 'actions', render: (product) => (
+                    { key: 'actions', header: 'Acciones', width: '244px', type: 'actions', render: (product) => (
                         <div className={catalog.rowActions}>
-                            <IconButton size="sm" icon={Eye} label={`Ver detalle de ${product.name}`} onClick={() => handleViewProduct(product)} />
-                            <IconButton size="sm" icon={FileText} label={`Ver kardex de ${product.name}`} onClick={() => navigate(`/kardex?productId=${product.id}`)} />
-                            {canAdjustStock && <IconButton size="sm" icon={Activity} label={`Ajustar stock de ${product.name}`} onClick={() => handleOpenAdjustment(product)} />}
-                            {canMutateProduct && <IconButton size="sm" icon={Layers} label={`Conversiones de ${product.name}`} onClick={() => navigate(`/inventory/${product.id}/units`)} />}
-                            {canMutateProduct && <IconButton size="sm" icon={Edit2} label={`Editar ${product.name}`} onClick={() => handleOpenSidebar(product)} />}
-                            {canDeleteProduct && <IconButton size="sm" icon={Trash2} label={`Eliminar ${product.name}`} onClick={() => handleDelete(product.id)} />}
+                            <IconButton size="sm" icon={Eye} tooltip="Ver detalle" label={`Ver detalle de ${product.name}`} onClick={() => handleViewProduct(product)} />
+                            {canMutateProduct && <IconButton size="sm" icon={Pencil} tooltip="Editar" label={`Editar ${product.name}`} onClick={() => handleOpenSidebar(product)} />}
+                            <IconButton size="sm" icon={FileText} tooltip="Kardex" label={`Ver kardex de ${product.name}`} onClick={() => navigate(`/kardex?productId=${product.id}`)} />
+                            {canAdjustStock && <IconButton size="sm" icon={Activity} tooltip="Ajustar stock" label={`Ajustar stock de ${product.name}`} onClick={() => handleOpenAdjustment(product)} />}
+                            {canMutateProduct && <IconButton size="sm" icon={Layers} tooltip="Conversiones" label={`Conversiones de ${product.name}`} onClick={() => navigate(`/inventory/${product.id}/units`)} />}
+                            {canDeleteProduct && <IconButton size="sm" icon={Trash2} tone="danger" tooltip="Eliminar" label={`Eliminar ${product.name}`} onClick={() => handleDelete(product.id)} />}
                         </div>
                     ) },
                 ] as Column<ProductInventory>[]}
             />
 
-            {/* Product Form Sidebar */}
             <FullScreenModal
                 isOpen={Boolean(viewingProduct)}
                 onClose={() => setViewingProduct(null)}
                 title="Detalle del Producto"
+                footerStart={viewingProduct ? ({ requestClose }) => (
+                    <Button variant="ghost" onClick={requestClose}>Cerrar</Button>
+                ) : undefined}
                 footer={viewingProduct ? (
-                    <div className="inventory-detail-footer">
-                        <Button type="button" variant="ghost" onClick={() => setViewingProduct(null)}>
-                            Cerrar
+                    <>
+                        <Button icon={FileText} onClick={() => navigate(`/kardex?productId=${viewingProduct.id}`)}>
+                            Ver Kardex
                         </Button>
-                        <div className="inventory-detail-footer-actions">
-                            <Button
-                                type="button"
-                                variant="ghost"
-                                onClick={() => navigate(`/kardex?productId=${viewingProduct.id}`)}
-                            >
-                                <FileText size={16} />
-                                Ver Kardex
+                        {canMutateProduct && (
+                            <Button variant="primary" icon={Pencil} onClick={handleEditFromDetail}>
+                                Editar Producto
                             </Button>
-                            {canMutateProduct && (
-                                <Button type="button" variant="primary" onClick={handleEditFromDetail}>
-                                    <Edit2 size={16} />
-                                    Editar Producto
-                                </Button>
-                            )}
-                        </div>
-                    </div>
+                        )}
+                    </>
                 ) : undefined}
             >
                 {viewingProduct && (() => {
@@ -1101,114 +1021,78 @@ export default function Inventory() {
                     const stockLevel = minStock > 0 ? Math.max(0, Math.min(100, (stock / minStock) * 100)) : 100;
 
                     return (
-                        <div className="inventory-detail" data-testid="inventory-product-detail">
-                            <div className="inventory-detail-hero">
-                                <div className="inventory-detail-hero-main">
-                                    <div className="inventory-detail-icon" aria-hidden="true">
-                                        <Package size={28} />
-                                    </div>
-                                    <div className="inventory-detail-identity">
-                                        <span className="inventory-detail-eyebrow">Ficha de inventario</span>
-                                        <h3>{viewingProduct.name}</h3>
-                                        <div className="inventory-detail-meta">
-                                            {viewingProduct.sku && <span className="inventory-detail-badge sku">SKU {viewingProduct.sku}</span>}
-                                            <div className="inventory-detail-status-row">
-                                                <span className={`inventory-detail-badge ${viewingProduct.active ? 'active' : 'inactive'}`}>
-                                                    {viewingProduct.active ? 'Activo' : 'Inactivo'}
-                                                </span>
-                                                <span className={`inventory-detail-badge ${isLow ? 'warning' : 'ok'}`}>
-                                                    {isLow ? 'Requiere reposición' : 'Stock saludable'}
-                                                </span>
-                                            </div>
-                                        </div>
+                        <div className={s.detail} data-testid="inventory-product-detail">
+                            <div className={s.detailHead}>
+                                <div className={s.detailIdentity}>
+                                    <p className={s.eyebrow}>Ficha de inventario</p>
+                                    <h3 className={s.detailTitle}>{viewingProduct.name}</h3>
+                                    <div className={s.badges}>
+                                        {viewingProduct.sku && <Badge>SKU {viewingProduct.sku}</Badge>}
+                                        <Badge tone={viewingProduct.active ? 'success' : 'neutral'}>
+                                            {viewingProduct.active ? 'Activo' : 'Inactivo'}
+                                        </Badge>
+                                        <Badge tone={isLow ? 'warning' : 'success'} dot>
+                                            {isLow ? 'Requiere reposición' : 'Stock saludable'}
+                                        </Badge>
                                     </div>
                                 </div>
-                                <div className="inventory-detail-stock-summary">
-                                    <span>Existencia actual</span>
-                                    <strong className={isLow ? 'warning' : ''}>
-                                        {stock.toLocaleString('es-NI', { maximumFractionDigits: 3 })}
-                                        <small>{unit}</small>
+                                <div className={s.stockSummary}>
+                                    <span className={s.factLabel}>Existencia actual</span>
+                                    <strong className={`${s.stockValue} ${isLow ? s.warn : ''}`.trim()}>
+                                        {formatNumber(stock)} <small>{unit}</small>
                                     </strong>
-                                    <div className="inventory-detail-stock-track" aria-hidden="true">
-                                        <span className={isLow ? 'warning' : ''} style={{ width: `${stockLevel}%` }} />
+                                    <div className={s.stockTrack} aria-hidden="true">
+                                        <span className={isLow ? s.warnFill : undefined} style={{ width: `${stockLevel}%` }} />
                                     </div>
-                                    <small>Mínimo configurado: {minStock.toLocaleString('es-NI', { maximumFractionDigits: 3 })} {unit}</small>
+                                    <small className={s.cellSub}>Mínimo configurado: {formatNumber(minStock)} {unit}</small>
                                 </div>
                             </div>
 
-                            <section className="inventory-detail-section">
-                                <div className="modal-section-header">
-                                    <Box size={18} />
-                                    <h3>Perfil del producto</h3>
-                                </div>
-                                <div className="inventory-detail-profile-grid">
-                                    <div className="inventory-detail-profile-item">
-                                        <Layers size={18} aria-hidden="true" />
-                                        <div><span>Tipo</span><strong>{PRODUCT_TYPE_LABELS[viewingProduct.type]}</strong></div>
-                                    </div>
-                                    <div className="inventory-detail-profile-item">
-                                        <ShoppingBag size={18} aria-hidden="true" />
-                                        <div><span>Categoría</span><strong>{category}</strong></div>
-                                    </div>
-                                    <div className="inventory-detail-profile-item">
-                                        <FlaskConical size={18} aria-hidden="true" />
-                                        <div><span>Unidad de referencia</span><strong>{unit}</strong></div>
-                                    </div>
-                                    <div className="inventory-detail-profile-item">
-                                        <Truck size={18} aria-hidden="true" />
-                                        <div><span>Almacenamiento</span><strong>{storageLabel}</strong></div>
-                                    </div>
-                                </div>
-                            </section>
+                            <FormSection title="Perfil del producto">
+                                <dl className={s.facts}>
+                                    <div><dt>Tipo</dt><dd>{PRODUCT_TYPE_LABELS[viewingProduct.type]}</dd></div>
+                                    <div><dt>Categoría</dt><dd>{category}</dd></div>
+                                    <div><dt>Unidad de referencia</dt><dd>{unit}</dd></div>
+                                    <div><dt>Almacenamiento</dt><dd>{storageLabel}</dd></div>
+                                </dl>
+                            </FormSection>
 
-                            <section className="inventory-detail-section">
-                                <div className="modal-section-header">
-                                    <DollarSign size={18} />
-                                    <h3>Costos y precio</h3>
-                                </div>
-                                <div className="inventory-detail-finance">
-                                    <div className="inventory-detail-effective-cost">
-                                        <div>
-                                            <span>Costo efectivo para recetas</span>
-                                            <strong>{costQuality.known ? formatUnitCost(costQuality.value, settings) : 'N/D'}</strong>
-                                        </div>
-                                        <span className="inventory-detail-cost-source">
+                            <FormSection title="Costos y precio">
+                                <dl className={s.facts}>
+                                    <div>
+                                        <dt>Costo efectivo para recetas</dt>
+                                        <dd className={s.numeric}>{costQuality.known ? formatUnitCost(costQuality.value, settings) : 'N/D'}</dd>
+                                        <dd className={s.cellSub}>
                                             {costQuality.source === 'AVERAGE'
                                                 ? 'Promedio ponderado'
                                                 : costQuality.source === 'REFERENCE' ? 'Costo de referencia' : 'Costo no confirmado'}
-                                        </span>
+                                        </dd>
                                     </div>
-                                    <dl className="inventory-detail-finance-breakdown">
-                                        <div><dt>Referencia</dt><dd>{viewingProduct.referenceCostKnown || Number(viewingProduct.cost) > 0 ? formatUnitCost(Number(viewingProduct.cost), settings) : 'N/D'}</dd></div>
-                                        <div><dt>Última compra</dt><dd>{formatLastPurchaseCost(viewingProduct, settings)}</dd></div>
-                                        <div><dt>Precio de venta</dt><dd>{viewingProduct.price != null ? formatCurrency(Number(viewingProduct.price), settings) : 'No aplica'}</dd></div>
-                                    </dl>
-                                    <p className="inventory-detail-finance-note">
-                                        {!costQuality.known
-                                            ? 'El producto no tiene un costo confirmado. Las salidas se bloquearan hasta corregir esta anomalia.'
-                                            : hasTransactionalCost
-                                            ? 'El costo efectivo proviene del promedio ponderado de las compras recibidas.'
-                                            : 'Mientras no existan compras recibidas, las recetas utilizan el costo de referencia.'}
-                                    </p>
-                                </div>
-                            </section>
+                                    <div><dt>Referencia</dt><dd className={s.numeric}>{viewingProduct.referenceCostKnown || Number(viewingProduct.cost) > 0 ? formatUnitCost(Number(viewingProduct.cost), settings) : 'N/D'}</dd></div>
+                                    <div><dt>Última compra</dt><dd className={s.numeric}>{formatLastPurchaseCost(viewingProduct, settings)}</dd></div>
+                                    <div><dt>Precio de venta</dt><dd className={s.numeric}>{viewingProduct.price != null ? formatCurrency(Number(viewingProduct.price), settings) : 'No aplica'}</dd></div>
+                                </dl>
+                                <p className={costQuality.known ? s.note : `${s.note} ${s.warn}`}>
+                                    {!costQuality.known
+                                        ? 'El producto no tiene un costo confirmado. Las salidas se bloquearan hasta corregir esta anomalia.'
+                                        : hasTransactionalCost
+                                        ? 'El costo efectivo proviene del promedio ponderado de las compras recibidas.'
+                                        : 'Mientras no existan compras recibidas, las recetas utilizan el costo de referencia.'}
+                                </p>
+                            </FormSection>
 
-                            <section className="inventory-detail-section inventory-detail-operational-note">
-                                <Activity size={18} aria-hidden="true" />
-                                <div>
-                                    <strong>Alcance de existencias</strong>
-                                    <p>Las cantidades corresponden solamente a las sucursales y almacenes permitidos para tu usuario.</p>
-                                </div>
-                            </section>
+                            <p className={s.note}>
+                                <Activity size={16} aria-hidden="true" />
+                                <span>
+                                    <strong>Alcance de existencias.</strong>{' '}
+                                    Las cantidades corresponden solamente a las sucursales y almacenes permitidos para tu usuario.
+                                </span>
+                            </p>
 
                             {viewingProduct.observation && (
-                                <section className="inventory-detail-section">
-                                    <div className="modal-section-header">
-                                        <FileText size={18} />
-                                        <h3>Observaciones</h3>
-                                    </div>
-                                    <p className="inventory-detail-observation">{viewingProduct.observation}</p>
-                                </section>
+                                <FormSection title="Observaciones">
+                                    <p className={s.observation}>{viewingProduct.observation}</p>
+                                </FormSection>
                             )}
                         </div>
                     );
@@ -1329,7 +1213,7 @@ export default function Inventory() {
                                 </FormGrid>
                                 {allUnits.length === 0 && (
                                     <div>
-                                        <Button size="sm" variant="ghost" onClick={() => navigate('/units-of-measure')}>Gestionar unidades de medida</Button>
+                                        <Button variant="ghost" onClick={() => navigate('/units-of-measure')}>Gestionar unidades de medida</Button>
                                     </div>
                                 )}
                                 <Field label="Observación" htmlFor="inventory-observation">
@@ -1575,16 +1459,16 @@ export default function Inventory() {
                                         />
                                     ),
                                 },
-                                { key: 'product', header: 'Producto', width: '2fr', render: (sg) => sg.productName?.trim() || `Producto #${sg.productId}` },
-                                { key: 'warehouse', header: 'Bodega', width: '1.2fr', hideBelow: 'md', render: (sg) => sg.warehouseName || 'Sin bodega' },
+                                { key: 'product', header: 'Producto', render: (sg) => sg.productName?.trim() || `Producto #${sg.productId}` },
+                                { key: 'warehouse', header: 'Bodega', hideBelow: 'md', render: (sg) => sg.warehouseName || 'Sin bodega' },
                                 {
-                                    key: 'priority', header: 'Prioridad', width: '0.9fr',
+                                    key: 'priority', header: 'Prioridad', type: 'status',
                                     render: (sg) => <Badge tone={sg.priority === 'URGENT' ? 'danger' : 'neutral'}>{sg.priority === 'URGENT' ? 'Urgente' : 'Normal'}</Badge>,
                                 },
-                                { key: 'current', header: 'Actual', width: '1fr', type: 'qty', hideBelow: 'md', accessor: (sg) => sg.currentStock || 0 },
-                                { key: 'min', header: 'Mín', width: '1fr', type: 'qty', hideBelow: 'lg', accessor: (sg) => sg.minStock || 0 },
-                                { key: 'suggested', header: 'Sugerido', width: '1fr', type: 'qty', render: (sg) => formatSuggestionQuantity(sg) },
-                                { key: 'cost', header: 'Estimado', width: '1fr', type: 'money', render: (sg) => formatCurrency(Number(sg.estimatedCost || 0), settings) },
+                                { key: 'current', header: 'Actual', type: 'qty', hideBelow: 'md', accessor: (sg) => sg.currentStock || 0 },
+                                { key: 'min', header: 'Mín', type: 'qty', hideBelow: 'lg', accessor: (sg) => sg.minStock || 0 },
+                                { key: 'suggested', header: 'Sugerido', type: 'qty', render: (sg) => formatSuggestionQuantity(sg) },
+                                { key: 'cost', header: 'Estimado', type: 'money', render: (sg) => formatCurrency(Number(sg.estimatedCost || 0), settings) },
                             ] as Column<AutoPurchaseSuggestion>[]}
                         />
                     </FormSection>
@@ -1598,10 +1482,11 @@ export default function Inventory() {
                 title="Importar productos desde Excel"
                 breadcrumb={['Inventario', 'Productos']}
                 subtitle="Los SKU existentes se actualizan; los nuevos se crean. Usa la plantilla para el formato correcto."
+                footerStart={<Button variant="ghost" icon={Download} onClick={handleDownloadTemplate}>Descargar plantilla</Button>}
                 footer={({ requestClose }) => (
                     <>
                         <Button onClick={requestClose}>Cancelar</Button>
-                        {importValidation && (
+                        {importValidation ? (
                             <Button
                                 variant="primary"
                                 onClick={handleImportConfirm}
@@ -1609,6 +1494,10 @@ export default function Inventory() {
                                 disabled={importValidation.summary.valid === 0}
                             >
                                 {`Confirmar importación (${importValidation.summary.valid})`}
+                            </Button>
+                        ) : (
+                            <Button variant="primary" onClick={handleImportValidate} loading={importLoading} disabled={!importFile}>
+                                Validar archivo
                             </Button>
                         )}
                     </>
@@ -1629,39 +1518,34 @@ export default function Inventory() {
                                 setImportShowErrorsOnly(false);
                             }}
                         />
-                        <button
-                            type="button"
-                            className={`${s.fileZone}${importFile ? ` ${s.fileZoneReady}` : ''}`}
-                            onClick={() => importFileInputRef.current?.click()}
-                        >
+                        <div className={`${s.fileZone}${importFile ? ` ${s.fileZoneReady}` : ''}`}>
                             <FileSpreadsheet size={28} aria-hidden="true" />
-                            <strong>{importFile ? importFile.name : 'Haz clic para elegir un archivo Excel'}</strong>
+                            <strong>{importFile ? importFile.name : 'Elige un archivo Excel'}</strong>
                             <span className={catalog.muted}>
                                 {importFile
                                     ? `${formatNumber(importFile.size / 1024, 1)} KB · .xlsx / .xls`
                                     : 'Formatos aceptados: .xlsx, .xls'}
                             </span>
-                        </button>
-                        <div className={catalog.inline}>
-                            <Button icon={Download} onClick={handleDownloadTemplate}>Descargar plantilla</Button>
-                            <Button variant="primary" onClick={handleImportValidate} loading={importLoading} disabled={!importFile}>
-                                Validar archivo
+                            <Button icon={Upload} onClick={() => importFileInputRef.current?.click()}>
+                                {importFile ? 'Cambiar archivo' : 'Elegir archivo'}
                             </Button>
                         </div>
                     </FormSection>
 
                     {importValidation && (
                         <FormSection step={2} title="Validación" description="Revisa las filas antes de confirmar.">
-                            <div className={catalog.kpiGrid}>
-                                <StatCard label="Total filas" value={formatNumber(importValidation.summary.totalRows, 0)} context="Filas leídas del archivo" />
-                                <StatCard label="Válidos" value={formatNumber(importValidation.summary.valid, 0)} tone="success" context={`${formatNumber(importValidation.summary.newProducts, 0)} nuevos, el resto actualiza productos existentes`} />
-                                <StatCard
-                                    label="Con errores"
-                                    value={formatNumber(importValidation.summary.invalid, 0)}
-                                    tone={importValidation.summary.invalid > 0 ? 'danger' : 'neutral'}
-                                    context={importValidation.summary.invalid > 0 ? 'No se importan; corrige el archivo y vuelve a validar' : 'Todas las filas se pueden importar'}
-                                />
-                            </div>
+                            <p className={s.importSummary} role="status">
+                                <Badge tone="success" dot>{`${formatNumber(importValidation.summary.valid, 0)} válidos`}</Badge>
+                                <span>{`De ${formatNumber(importValidation.summary.totalRows, 0)} filas · ${formatNumber(importValidation.summary.newProducts, 0)} nuevos, el resto actualiza productos existentes`}</span>
+                                {importValidation.summary.invalid > 0 ? (
+                                    <>
+                                        <Badge tone="danger" dot>{`${formatNumber(importValidation.summary.invalid, 0)} con errores`}</Badge>
+                                        <span>No se importan; corrige el archivo y vuelve a validar</span>
+                                    </>
+                                ) : (
+                                    <span>Todas las filas se pueden importar</span>
+                                )}
+                            </p>
                             <DataTable
                                 ariaLabel="Vista previa de importación"
                                 rows={filteredImportItems}
@@ -1670,7 +1554,7 @@ export default function Inventory() {
                                 pageSizeOptions={[25, 50, 100]}
                                 resetKey={`${importSearch}|${importShowErrorsOnly}`}
                                 rowTone={(item) => (item.isValid ? undefined : 'danger')}
-                                empty={<EmptyState title="No hay filas que coincidan con el filtro." />}
+                                empty="No hay filas que coincidan con el filtro."
                                 toolbar={(
                                     <TableToolbar>
                                         <Input
@@ -1691,16 +1575,16 @@ export default function Inventory() {
                                     </TableToolbar>
                                 )}
                                 columns={[
-                                    { key: 'rowNumber', header: '#', type: 'number', decimals: 0, width: '4rem' },
+                                    { key: 'rowNumber', header: '#', type: 'number', decimals: 0 },
                                     { key: 'sku', header: 'SKU' },
                                     { key: 'name', header: 'Nombre' },
-                                    { key: 'action', header: 'Acción', render: (item) => (
+                                    { key: 'action', header: 'Acción', type: 'status', render: (item) => (
                                         <Badge tone={item.isUpdate ? 'neutral' : 'success'}>{item.isUpdate ? 'Actualizar' : 'Nuevo'}</Badge>
                                     ) },
                                     { key: 'status', header: 'Estado', type: 'status', render: (item) => (
                                         item.isValid
                                             ? <Badge tone="success">OK</Badge>
-                                            : <span title={item.errors.join(', ')}><Badge tone="danger">{item.errors[0]}</Badge></span>
+                                            : <Tooltip label={item.errors.join(', ')}><span tabIndex={0}><Badge tone="danger">{item.errors[0]}</Badge></span></Tooltip>
                                     ) },
                                 ] as Column<(typeof filteredImportItems)[number]>[]}
                             />

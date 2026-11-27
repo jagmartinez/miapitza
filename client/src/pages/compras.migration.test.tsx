@@ -120,19 +120,19 @@ beforeEach(() => {
 });
 
 describe('Compras: PurchaseOrders', () => {
-    it('usa PageHeader, DataTable con importes a la derecha y tarjetas con contexto', async () => {
+    it('usa PageHeader, pestañas de estado con conteo, DataTable con importes a la derecha y sin tarjetas KPI', async () => {
         renderInRouter(<PurchaseOrders />);
         expect(await screen.findByRole('heading', { level: 1, name: 'Órdenes de Compra' })).toHaveClass('ui-pageheader__title');
         const table = await screen.findByRole('table', { name: 'Órdenes de compra' });
         expect(table).toHaveClass('ui-table');
         const money = within(table).getByText('1,234.50');
         expect(money).toHaveClass('ui-cell--numeric');
-        // Tarjeta de comprometido: valor + contexto (nunca un conteo suelto).
-        const card = screen.getByRole('region', { name: 'Comprometido sin recibir' });
-        expect(within(card).getByText('C$ 1,234.50')).toBeInTheDocument();
-        expect(within(card).getByText(/1 órdenes emitidas/)).toBeInTheDocument();
-        const payable = screen.getByRole('region', { name: 'Por pagar a proveedores' });
-        expect(within(payable).getByText('C$ 500.00')).toBeInTheDocument();
+        // Vista operativa: sin tarjetas KPI; el estado se filtra con pestañas con conteo.
+        expect(screen.queryByRole('region', { name: 'Comprometido sin recibir' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('region', { name: 'Por pagar a proveedores' })).not.toBeInTheDocument();
+        const tabs = screen.getByRole('tablist', { name: 'Filtrar por estado de la orden' });
+        expect(within(tabs).getByRole('tab', { name: /Todas\s*2/ })).toHaveAttribute('aria-selected', 'true');
+        expect(within(tabs).getByRole('tab', { name: /Emitida\s*1/ })).toBeInTheDocument();
         noNativeControls();
     });
 
@@ -140,7 +140,10 @@ describe('Compras: PurchaseOrders', () => {
         mocks.purchaseOrdersAPI.getAll.mockReturnValueOnce(Promise.reject(new Error('boom')));
         renderInRouter(<PurchaseOrders />);
         expect(await screen.findByRole('alert')).toHaveTextContent(/No se pudieron cargar las órdenes/);
-        expect(screen.queryByRole('region', { name: 'Comprometido sin recibir' })).not.toBeInTheDocument();
+        // Sin datos no se muestran conteos en cero en las pestañas de estado.
+        const tabs = screen.getByRole('tablist', { name: 'Filtrar por estado de la orden' });
+        expect(within(tabs).queryByText('0')).not.toBeInTheDocument();
+        expect(within(tabs).getByRole('tab', { name: 'Todas' })).toBeInTheDocument();
         await userEvent.click(screen.getByRole('button', { name: 'Reintentar' }));
         await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
     });
@@ -264,13 +267,11 @@ describe('Compras: InvoiceHistory', () => {
 });
 
 describe('Compras: BankReconciliation', () => {
-    it('usa PageHeader, tabs, tarjetas con contexto y tablas del design system', async () => {
+    it('usa PageHeader, tabs, resumen sin tarjetas y tablas del design system', async () => {
         renderInRouter(<BankReconciliation />);
         expect(await screen.findByRole('heading', { level: 1, name: 'Conciliación Bancaria' })).toHaveClass('ui-pageheader__title');
         expect(screen.getByRole('tablist', { name: 'Secciones de conciliación' })).toBeInTheDocument();
-        const diff = await screen.findByRole('region', { name: 'Diferencia de efectivo' });
-        expect(within(diff).getByText('-C$ 100.00')).toBeInTheDocument();
-        expect(within(diff).getByText(/Faltante/)).toBeInTheDocument();
+        expect(await screen.findByText(/Faltante/)).toHaveTextContent(/-C\$ 100\.00/);
         const methods = await screen.findByRole('table', { name: 'Ventas por método de pago' });
         expect(within(methods).getByText('2,000.00')).toHaveClass('ui-cell--numeric');
         noNativeControls();

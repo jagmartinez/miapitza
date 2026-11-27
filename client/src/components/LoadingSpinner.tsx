@@ -1,3 +1,4 @@
+import { Spinner } from '@/ui';
 import './LoadingSpinner.css';
 
 interface LoadingSpinnerProps {
@@ -5,12 +6,12 @@ interface LoadingSpinnerProps {
     text?: string;
 }
 
+const SIZE_PX = { sm: 16, md: 24, lg: 36 } as const;
+
 export default function LoadingSpinner({ size = 'md', text }: LoadingSpinnerProps) {
     return (
         <div className="loading-spinner-container">
-            <div className={`loading-spinner loading-spinner-${size}`}>
-                <div className="spinner"></div>
-            </div>
+            <Spinner size={SIZE_PX[size]} label={text ?? 'Cargando'} />
             {text && <p className="loading-text">{text}</p>}
         </div>
     );

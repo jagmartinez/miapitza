@@ -16,6 +16,11 @@
   --ui-danger: #C4322B;
   --ui-danger-soft: #FCE8E6;
   --ui-overlay: rgba(15, 16, 19, .55);
+  --ui-shadow-overlay: 0 12px 32px rgba(15, 16, 19, .18);
+  --ui-focus-ring: 0 0 0 3px rgba(52, 81, 209, .22);
+  --ui-success-fg: #FFFFFF;
+  --ui-danger-fg: #FFFFFF;
+  --ui-motion-fast: 150ms;
 
   --ui-radius-sm: 6px;
   --ui-radius-md: 8px;
@@ -46,6 +51,13 @@
   --ui-control-md: 40px;
   --ui-control-sm: 32px;
   --ui-control-touch: 44px;
+
+  /* Holgura lateral extra de modales (FullScreenModal, Drawer, ConfirmDialog) sobre su padding base. */
+  --ui-modal-pad-extra: 25px;
+  --ui-modal-pad-x: calc(var(--ui-space-6) + var(--ui-modal-pad-extra));
+}
+@media (max-width: 640px) {
+  :root { --ui-modal-pad-extra: 8px; --ui-modal-pad-x: calc(var(--ui-space-4) + var(--ui-modal-pad-extra)); }
 }
 
 .dark {
@@ -66,6 +78,10 @@
   --ui-danger: #FF7B72;
   --ui-danger-soft: #3A1714;
   --ui-overlay: rgba(0, 0, 0, .7);
+  --ui-shadow-overlay: 0 12px 32px rgba(0, 0, 0, .5);
+  --ui-focus-ring: 0 0 0 3px rgba(142, 162, 255, .35);
+  --ui-success-fg: #0F1013;
+  --ui-danger-fg: #0F1013;
 }
 
 /* Alias de diálogo heredados. */

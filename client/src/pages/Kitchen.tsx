@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useContext } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { ordersAPI } from '../services/api';
-import { ChefHat, CheckCircle, CheckCheck, AlertCircle, Volume2, VolumeX, AlertTriangle, Play, Check, ListOrdered, Maximize2, Minimize2, MonitorUp, ArrowLeft } from 'lucide-react';
+import { Ban, ChefHat, CheckCircle, CheckCheck, AlertCircle, Volume2, VolumeX, AlertTriangle, Play, Check, ListOrdered, Maximize2, Minimize2, MonitorUp, ArrowLeft, Search } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { initializeSound, playNotificationSound } from '../utils/sound';
 import { escapeHtml } from '../utils/escapeHtml';
@@ -14,11 +14,13 @@ import { useAppToast } from '../context/ToastContext';
 import './Kitchen.css';
 import { getOrderStatusLabel, getOrderTimeline } from '../utils/orderStatus';
 import { useConfirmDialog } from '../context/ConfirmContext';
-import { AppSelect, Button, FullScreenModal, IconButton, Input, PageHeader, SegmentedControl, formatNumber } from '@/ui';
+import {
+    AppSelect, Badge, Button, EmptyState, Field, FullScreenModal, IconButton, Input, LoadErrorState, PageHeader, Spinner,
+    TableToolbar, Tabs, Textarea, formatNumber,
+} from '@/ui';
 import ThemeToggle from '../components/ThemeToggle';
 import { orderWhereLabel } from '../utils/orderWhere';
 import { ThemeContext } from '../context/theme-context';
-import EmptyState from '../components/EmptyState';
 import type { Order, OrderItem } from '../types';
 import { getKdsTimeClass, getKdsWaitMinutes, getKitchenReceivedAt, summarizeKds } from '../utils/kdsTiming';
 import { getApiErrorMessage } from '../utils/apiError';
@@ -68,6 +70,7 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
     const [showProblemModal, setShowProblemModal] = useState(false);
     const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
     const [problemDescription, setProblemDescription] = useState('');
+    const [submittingProblem, setSubmittingProblem] = useState(false);
     const [detailOrderKey, setDetailOrderKey] = useState<string | null>(null);
     const [showHistory, setShowHistory] = useState(false);
     const [timingConfig, setTimingConfig] = useState<{ warningMinutes: number; urgentMinutes: number } | null>(null);
@@ -287,7 +290,7 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
                 <style>
                     body { font-family: monospace; padding: 20px; }
                     h2 { text-align: center; margin: 0; }
-                    .divider { border-top: 2px dashed #000; margin: 10px 0; }
+                    .divider { border-top: 2px dashed; margin: 10px 0; }
                     .item { display: flex; justify-content: space-between; margin: 5px 0; }
                 </style>
             </head>
@@ -333,6 +336,7 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
             return;
         }
         if (problemDescription.trim() && selectedOrderId) {
+            setSubmittingProblem(true);
             try {
                 await ordersAPI.reportProblem(selectedOrderId, problemDescription.trim());
                 success(`Problema reportado para orden #${selectedOrderId}. Se ha notificado al gerente.`);
@@ -342,6 +346,8 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
             } catch (error: unknown) {
                 console.error('Error reporting problem:', error);
                 showError(axiosMsg(error, 'Error al reportar problema'));
+            } finally {
+                setSubmittingProblem(false);
             }
         }
     };
@@ -370,32 +376,42 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
     };
 
     if (loading) {
-        return <div className="kitchen-loading">Cargando comandas...</div>;
+        return (
+            <div className="kitchen-loading">
+                <Spinner size={28} label="Cargando comandas" />
+            </div>
+        );
     }
 
+    const matchesFilters = (order: Order, status: string) => {
+        // Status filter
+        if (status !== 'all' && order.status !== status) return false;
+
+        // Table filter
+        if (debouncedTableFilter && order.table?.number?.toString() !== debouncedTableFilter) return false;
+
+        // Date filter (only apply when status is 'all')
+        if (status === 'all' && !isWithinDateRange(getKitchenReceivedAt(order))) return false;
+
+        return true;
+    };
+    const statusCount = (status: string) => loadError ? undefined : orders.filter((order) => matchesFilters(order, status)).length;
     const sortedOrders = [...orders]
-        .filter(order => {
-            // Status filter
-            if (statusFilter !== 'all' && order.status !== statusFilter) return false;
-
-            // Table filter
-            if (debouncedTableFilter && order.table?.number?.toString() !== debouncedTableFilter) return false;
-
-            // Date filter (only apply when statusFilter is 'all')
-            if (statusFilter === 'all' && !isWithinDateRange(getKitchenReceivedAt(order))) return false;
-
-            return true;
-        })
+        .filter((order) => matchesFilters(order, statusFilter))
         .sort((a, b) =>
             new Date(getKitchenReceivedAt(a)).getTime() - new Date(getKitchenReceivedAt(b)).getTime()
         );
+
+    const formatClock = (value?: string | null) => (value
+        ? new Date(value).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
+        : '--:--');
 
     const renderCard = (order: Order) => {
         const waitTime = getWaitTime(order);
         const timeClass = getTimeClass(waitTime);
         const where = orderWhereLabel(order);
         const isReady = order.status === 'READY';
-        // Color de la cabecera según la demora (umbrales del KDS); las listas y liberadas no alarman.
+        // Franja superior según la demora (umbrales del KDS); las listas y liberadas no alarman.
         const delay = order.kitchenReleasedAt || isReady
             ? 'calm'
             : timeClass === 'time-urgent' ? 'urgent' : timeClass === 'time-warning' ? 'warning' : 'calm';
@@ -433,16 +449,16 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
                     )}
                 </button>
 
-                <div className={`kds-ticket__items kds-visible-items ${displayMode ? 'is-display-mode' : 'is-pc-mode'}`}>
+                <div className={`kds-ticket__items ${displayMode ? 'is-display-mode' : 'is-pc-mode'}`}>
                     {order.items?.map((item) => {
                         const awaitingSend = !item.sentAt && item.status === 'PENDING';
                         if (isVoidedOrderLine(item)) {
                             return (
-                                <div key={item.id} className="kds-ticket__item is-voided order-line-voided" title={item.voidReason || undefined}>
+                                <div key={item.id} className="kds-ticket__item is-voided" title={item.voidReason || undefined}>
                                     <strong className="kds-ticket__qty">{item.voidedQuantity}</strong>
                                     <span className="kds-ticket__name">
-                                        <span className="order-line-voided-name">{item.menuItem?.name || 'Producto'}</span>
-                                        <small className="order-line-void-badge">Anulado</small>
+                                        <span>{item.menuItem?.name || 'Producto'}</span>
+                                        <Badge tone="danger">Anulado</Badge>
                                     </span>
                                 </div>
                             );
@@ -469,28 +485,28 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
                         {order.user && (
                             <span className="kitchen-waiter-dot" style={{ backgroundColor: getUserAccentColor(order.user) }} aria-hidden="true" />
                         )}
-                        {order.user?.name || 'Sin mesero'} · {new Date(getKitchenReceivedAt(order)).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
+                        {order.user?.name || 'Sin mesero'} · {formatClock(getKitchenReceivedAt(order))}
                     </span>
                     {order.kitchenReleasedAt ? (
                         <span className="kds-ticket__done"><CheckCircle size={16} aria-hidden="true" /> En historial</span>
                     ) : isReady ? (
                         canKitchenLineOps ? (
-                            <Button variant="primary" className="kds-ticket__btn" icon={CheckCheck} onClick={() => void handleReleaseOrder(order)} title="Confirmar liberación de la tanda">
+                            <Button variant="primary" size="lg" icon={CheckCheck} onClick={() => void handleReleaseOrder(order)} title="Confirmar liberación de la tanda">
                                 Entregada
                             </Button>
                         ) : <span className="kds-ticket__done"><CheckCircle size={16} aria-hidden="true" /> Orden lista</span>
                     ) : canKitchenLineOps ? (
                         <>
-                            <Button variant="secondary" className="kds-ticket__btn" onClick={() => handleReportProblem(order.id)} aria-label={`Reportar problema en orden ${order.id}`}>
+                            <Button variant="secondary" size="lg" icon={AlertTriangle} onClick={() => handleReportProblem(order.id)} aria-label={`Reportar problema en orden ${order.id}`}>
                                 Problema
                             </Button>
                             {order.status === 'SENT_TO_KITCHEN' && (
-                                <Button variant="primary" className="kds-ticket__btn" icon={Play} onClick={() => void handleStartOrder(order)} title="Primer toque: iniciar preparación">
+                                <Button variant="primary" size="lg" icon={Play} onClick={() => void handleStartOrder(order)} title="Primer toque: iniciar preparación">
                                     Iniciar
                                 </Button>
                             )}
                             {order.status === 'IN_PREPARATION' && (
-                                <Button variant="primary" className="kds-ticket__btn kds-ticket__btn--ready" icon={CheckCircle} onClick={() => void handleMarkReady(order)} title="Marcar toda la tanda como lista">
+                                <Button variant="primary" size="lg" icon={CheckCircle} onClick={() => void handleMarkReady(order)} title="Marcar toda la tanda como lista">
                                     Lista
                                 </Button>
                             )}
@@ -516,13 +532,24 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
             ? 'Ninguna'
             : lateOrders.slice(0, 3).map((o) => `#${o.id} ${orderWhereLabel(o)}`).join(', ') + (lateOrders.length > 3 ? ` y ${lateOrders.length - 3} más` : '');
 
+    const detailOrder = detailOrderKey !== null ? orders.find((o) => kitchenOrderKey(o) === detailOrderKey) ?? null : null;
+    const detailWaitTime = detailOrder ? getWaitTime(detailOrder) : 0;
+    const detailTimeline = detailOrder ? getOrderTimeline(detailOrder) : null;
+    const detailWaitTone = detailOrder?.status === 'READY'
+        ? 'success'
+        : getTimeClass(detailWaitTime) === 'time-urgent' ? 'danger' : getTimeClass(detailWaitTime) === 'time-warning' ? 'warning' : 'neutral';
+    const closeProblemModal = () => {
+        setShowProblemModal(false);
+        setProblemDescription('');
+    };
+
     return (
         <div ref={pageRef} className={`kitchen-page-new ${displayMode ? 'kitchen-display-mode' : 'kitchen-admin-mode'}`}>
             <PageHeader
                 title={displayMode ? 'Pantalla de Cocina' : 'Cocina'}
                 description={showHistory ? 'Historial de comandas liberadas' : undefined}
                 actions={
-                    <div className="kitchen-controls">
+                    <>
                         {!showHistory && (
                             <dl className="kitchen-metrics" aria-label="Indicadores de cocina">
                                 <div>
@@ -544,6 +571,7 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
                         <IconButton
                             icon={soundEnabled ? Volume2 : VolumeX}
                             label={soundEnabled ? 'Sonido ON' : 'Sonido OFF'}
+                            tooltip={soundEnabled ? 'Silenciar avisos' : 'Activar sonido'}
                             onClick={() => setSoundEnabled(!soundEnabled)}
                         />
                         {/* /kds no tiene barra superior: el tema se cambia aquí. */}
@@ -553,65 +581,50 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
                         </Button>}
                         {!displayMode && <Button variant="secondary" icon={MonitorUp} onClick={() => navigate('/kds')}>Abrir KDS táctil</Button>}
                         {displayMode && canReturnToAdministration && <Button variant="secondary" icon={ArrowLeft} onClick={() => navigate('/kitchen')}>Volver a administración</Button>}
-                    </div>
+                    </>
                 }
             />
-            {loadError && <div className="kitchen-load-error" role="alert"><AlertTriangle size={20} /><span>{loadError}</span><button type="button" onClick={() => void loadOrders()}>Reintentar</button></div>}
 
-            {/* Filters Row */}
-            <div className="filters-row">
-                <SegmentedControl
-                    ariaLabel="Filtrar por estado"
-                    size="sm"
-                    value={statusFilter}
-                    onChange={setStatusFilter}
-                    options={[
-                        { value: 'all', label: 'Todas' },
-                        { value: 'SENT_TO_KITCHEN', label: 'En cola' },
-                        { value: 'IN_PREPARATION', label: 'En preparación' },
-                        { value: 'READY', label: 'Listas' },
-                    ]}
-                />
+            <Tabs
+                ariaLabel="Filtrar por estado"
+                active={statusFilter}
+                onChange={setStatusFilter}
+                tabs={[
+                    { id: 'all', label: 'Todas', badge: statusCount('all') },
+                    { id: 'SENT_TO_KITCHEN', label: 'En cola', badge: statusCount('SENT_TO_KITCHEN') },
+                    { id: 'IN_PREPARATION', label: 'En preparación', badge: statusCount('IN_PREPARATION') },
+                    { id: 'READY', label: 'Listas', badge: statusCount('READY') },
+                ]}
+            />
 
-                {!displayMode && <div className="additional-filters">
-                    <div className="filter-group">
-                        <Input
-                            id="table-filter"
-                            type="search"
-                            aria-label="Filtrar por número de mesa"
-                            placeholder="Mesa #"
-                            value={tableFilter}
-                            onChange={(e) => setTableFilter(e.target.value)}
-                        />
-                    </div>
-                    <div className="filter-group date-filter-group">
-                        <AppSelect
-                            inputId="date-filter"
-                            aria-label="Filtrar por fecha"
-                            options={dateFilterOptions}
-                            value={dateFilter}
-                            onChange={(v) => setDateFilter(v ?? '24h')}
-                            isClearable={false}
-                            placeholder="Filtrar por fecha"
-                        />
-                    </div>
-                </div>}
-            </div>
+            {!displayMode && (
+                <TableToolbar>
+                    <Input
+                        id="table-filter"
+                        type="search"
+                        prefix={<Search size={16} aria-hidden="true" />}
+                        aria-label="Filtrar por número de mesa"
+                        placeholder="Mesa #"
+                        value={tableFilter}
+                        onChange={(e) => setTableFilter(e.target.value)}
+                    />
+                    <AppSelect
+                        inputId="date-filter"
+                        aria-label="Filtrar por fecha"
+                        options={dateFilterOptions}
+                        value={dateFilter}
+                        onChange={(v) => setDateFilter(v ?? '24h')}
+                        isClearable={false}
+                        placeholder="Filtrar por fecha"
+                    />
+                </TableToolbar>
+            )}
 
-            <div className={`kitchen-columns${showHistory ? " kitchen-columns--history" : ""}`}>
-                {kitchenColumns.map((col) => (
-                    <section key={col.key} className="kitchen-column" aria-label={col.label}>
-                        <h2 className="kitchen-column__title"><span className="kitchen-column__dot" data-tone={col.tone} aria-hidden="true" />{col.label} <span>{formatNumber(col.orders.length, 0)}</span></h2>
-                        <div className="kitchen-column__body">
-                            {col.orders.map(renderCard)}
-                            {col.orders.length === 0 && sortedOrders.length > 0 && <div className="kitchen-column__empty">Sin comandas</div>}
-                        </div>
-                    </section>
-                ))}
-            </div>
-            {sortedOrders.length === 0 && (
+            {loadError && <LoadErrorState message={loadError} onRetry={() => void loadOrders()} />}
+
+            {sortedOrders.length === 0 ? (
                 <EmptyState
-                    icon={<ChefHat size={48} />}
+                    icon={ChefHat}
                     title={orders.length === 0 ? 'No hay órdenes pendientes' : 'Ninguna orden coincide con los filtros'}
                     description={
                         orders.length === 0
@@ -619,155 +632,126 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
                             : 'Prueba otro estado, mesa o rango de fecha'
                     }
                 />
+            ) : (
+                <div className="kitchen-columns">
+                    {kitchenColumns.map((col) => (
+                        <section key={col.key} className="kitchen-column" aria-label={col.label}>
+                            <h2 className="kitchen-column__title"><span className="kitchen-column__dot" data-tone={col.tone} aria-hidden="true" />{col.label} <span>{formatNumber(col.orders.length, 0)}</span></h2>
+                            <div className="kitchen-column__body">
+                                {col.orders.map(renderCard)}
+                                {col.orders.length === 0 && <p className="kitchen-column__empty">Sin comandas</p>}
+                            </div>
+                        </section>
+                    ))}
+                </div>
             )}
 
             {/* Order Detail Modal */}
-            {detailOrderKey !== null && (() => {
-                const detailOrder = orders.find(o => kitchenOrderKey(o) === detailOrderKey);
-                if (!detailOrder) return null;
-                const detailWaitTime = getWaitTime(detailOrder);
-                const detailTimeline = getOrderTimeline(detailOrder);
-                const detailWaiterAccent = getUserAccentColor(detailOrder.user);
-                return (
-                    <FullScreenModal
-                        isOpen={true}
-                        onClose={() => setDetailOrderKey(null)}
-                        title={`Orden #${detailOrder.id} — ${orderWhereLabel(detailOrder)}`}
-                        footer={!detailOrder.kitchenReleasedAt ? (
-                            <div className="kitchen-detail-footer">
-                                {canKitchenLineOps && (
-                                    <Button variant="ghost" className="btn-danger-ghost" onClick={() => { setDetailOrderKey(null); handleReportProblem(detailOrder.id); }}>
-                                        <AlertTriangle size={16} /> Reportar problema
-                                    </Button>
-                                )}
-                                <div className="kitchen-detail-footer-primary">
-                                    {canKitchenLineOps && detailOrder.status === 'IN_PREPARATION' && <Button variant="primary" onClick={() => { void handleMarkReady(detailOrder); setDetailOrderKey(null); }}><CheckCircle size={16} /> Marcar todo listo</Button>}
-                                    {canKitchenLineOps && detailOrder.status === 'READY' && <Button variant="primary" onClick={() => void handleReleaseOrder(detailOrder)}><Check size={18} /> Liberar del KDS</Button>}
-                                </div>
+            <FullScreenModal
+                isOpen={detailOrder !== null}
+                onClose={() => setDetailOrderKey(null)}
+                title={detailOrder ? `Orden #${detailOrder.id} — ${orderWhereLabel(detailOrder)}` : 'Orden'}
+                subtitle={detailOrder
+                    ? `Comanda de cocina · Tanda ${detailOrder.kitchenBatchSequence ?? '—'} · ${detailOrder.items?.length || 0} productos${detailOrder.user ? ` · ${detailOrder.user.name}` : ''}`
+                    : undefined}
+                status={detailOrder ? (
+                    <Badge tone={detailWaitTone} dot>
+                        {detailOrder.status === 'READY' ? 'Orden lista' : `${detailWaitTime} min`}
+                    </Badge>
+                ) : undefined}
+                footerStart={detailOrder && !detailOrder.kitchenReleasedAt && canKitchenLineOps ? (
+                    <Button variant="ghost" icon={AlertTriangle} className="kitchen-danger-text" onClick={() => { setDetailOrderKey(null); handleReportProblem(detailOrder.id); }}>
+                        Reportar problema
+                    </Button>
+                ) : undefined}
+                footer={detailOrder && !detailOrder.kitchenReleasedAt && canKitchenLineOps && (detailOrder.status === 'IN_PREPARATION' || detailOrder.status === 'READY') ? (
+                    detailOrder.status === 'IN_PREPARATION'
+                        ? <Button variant="primary" icon={CheckCircle} onClick={() => { void handleMarkReady(detailOrder); setDetailOrderKey(null); }}>Marcar todo listo</Button>
+                        : <Button variant="primary" icon={Check} onClick={() => void handleReleaseOrder(detailOrder)}>Liberar del KDS</Button>
+                ) : undefined}
+            >
+                {detailOrder && detailTimeline && (
+                    <div className="kitchen-detail">
+                        <dl className="kitchen-detail__timeline">
+                            <div>
+                                <dt>Estado</dt>
+                                <dd>{getOrderStatusLabel(detailOrder.status)}</dd>
                             </div>
-                        ) : undefined}
-                    >
-                        <div className="kitchen-detail-modal">
-                            <div className="kitchen-detail-hero">
-                                <div className="kitchen-detail-identity">
-                                    <span className="kitchen-detail-eyebrow">Comanda de cocina</span>
-                                    <div className="kitchen-detail-table-row"><div className="kitchen-detail-icon"><ChefHat size={26} /></div><div><h3>{orderWhereLabel(detailOrder)}</h3><p>Orden #{detailOrder.id} · Tanda {detailOrder.kitchenBatchSequence ?? '—'} · {detailOrder.items?.length || 0} productos</p></div></div>
-                                    {detailOrder.user && (
-                                        <span className="kitchen-waiter-chip" style={{ backgroundColor: `${detailWaiterAccent}25`, color: detailWaiterAccent, borderColor: detailWaiterAccent }}>
-                                            <span className="kitchen-waiter-dot" style={{ backgroundColor: detailWaiterAccent }} />{detailOrder.user.name}
-                                        </span>
-                                    )}
-                                </div>
-                                <div className={`kitchen-detail-wait status-${detailOrder.status === 'READY' ? 'ready' : getTimeClass(detailWaitTime).replace('time-', '')}`}>
-                                    <span>{detailOrder.status === 'READY' ? 'Orden lista' : 'Tiempo transcurrido'}</span>
-                                    <strong>{detailOrder.status === 'READY' ? <CheckCheck size={28} /> : `${detailWaitTime} min`}</strong>
-                                    <small>{getOrderStatusLabel(detailOrder.status)}</small>
-                                </div>
+                            <div>
+                                <dt>Recibida</dt>
+                                <dd>{formatClock(getKitchenReceivedAt(detailOrder))}</dd>
                             </div>
+                            <div>
+                                <dt>Inicio</dt>
+                                <dd>{formatClock(detailTimeline.firstStartedAt)}</dd>
+                            </div>
+                            <div>
+                                <dt>Lista</dt>
+                                <dd>{formatClock(detailTimeline.readyAt)}</dd>
+                            </div>
+                        </dl>
 
-                            <div className="kitchen-timeline-grid kitchen-detail-timeline">
-                                <div className="kitchen-timeline-cell">
-                                    <div className="kitchen-timeline-label">Estado</div>
-                                    <div className="kitchen-timeline-value">{getOrderStatusLabel(detailOrder.status)}</div>
-                                </div>
-                                <div className="kitchen-timeline-cell">
-                                    <div className="kitchen-timeline-label">Recibida</div>
-                                    <div className="kitchen-timeline-value">
-                                        {new Date(getKitchenReceivedAt(detailOrder)).toLocaleTimeString('es-ES', {
-                                            hour: '2-digit',
-                                            minute: '2-digit'
-                                        })}
-                                    </div>
-                                </div>
-                                <div className="kitchen-timeline-cell">
-                                    <div className="kitchen-timeline-label">Inicio</div>
-                                    <div className="kitchen-timeline-value">
-                                        {detailTimeline.firstStartedAt ? new Date(detailTimeline.firstStartedAt).toLocaleTimeString('es-ES', {
-                                            hour: '2-digit',
-                                            minute: '2-digit'
-                                        }) : '--:--'}
-                                    </div>
-                                </div>
-                                <div className="kitchen-timeline-cell">
-                                    <div className="kitchen-timeline-label">Lista</div>
-                                    <div className="kitchen-timeline-value">
-                                        {detailTimeline.readyAt ? new Date(detailTimeline.readyAt).toLocaleTimeString('es-ES', {
-                                            hour: '2-digit',
-                                            minute: '2-digit'
-                                        }) : '--:--'}
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="kitchen-detail-section-heading"><div><span>Preparación</span><h4>Productos de la orden</h4></div><b>{detailOrder.items?.length || 0}</b></div>
-                            <div className="kitchen-items-list kitchen-items-list-modal">
+                        <section className="kitchen-detail__section" aria-label="Productos de la orden">
+                            <h3 className="kitchen-detail__heading">Productos de la orden <span>{formatNumber(detailOrder.items?.length || 0, 0)}</span></h3>
+                            <ul className="kitchen-detail__items">
                                 {detailOrder.items?.map((item) => {
                                     const prepTime = getItemTimeDiff(item.startedAt);
                                     const awaitingSend = !item.sentAt && item.status === 'PENDING';
-                                    const itemStatusClass = item.status === 'DONE' ? 'item-done' : item.status === 'IN_PROGRESS' ? 'item-progress' : 'item-pending';
                                     if (isVoidedOrderLine(item)) {
                                         return (
-                                            <div key={item.id} className="kitchen-item item-done order-line-voided">
-                                                <span className="item-qty-kitchen">{item.voidedQuantity}×</span>
-                                                <span className="item-name-kitchen">
-                                                    <strong className="order-line-voided-name">{item.menuItem?.name || 'Producto'}</strong>
-                                                    {item.voidReason && <small className="item-note-kitchen">Motivo: {item.voidReason}</small>}
+                                            <li key={item.id} className="kitchen-detail__item is-voided">
+                                                <span className="kitchen-detail__qty">{item.voidedQuantity}×</span>
+                                                <span className="kitchen-detail__name">
+                                                    <strong>{item.menuItem?.name || 'Producto'}</strong>
+                                                    {item.voidReason && <small>Motivo: {item.voidReason}</small>}
                                                 </span>
-                                                <span className="order-line-void-badge">Anulado</span>
-                                            </div>
+                                                <span className="kitchen-detail__actions"><Badge tone="danger">Anulado</Badge></span>
+                                            </li>
                                         );
                                     }
+                                    const stateTone = item.status === 'DONE' ? 'success' : item.status === 'IN_PROGRESS' ? 'warning' : 'neutral';
                                     return (
-                                        <div key={item.id || item.menuItemId} className={`kitchen-item ${itemStatusClass}`}>
-                                            <span className="item-qty-kitchen">{item.quantity}×</span>
-                                            <span className="item-name-kitchen">
+                                        <li key={item.id || item.menuItemId} className="kitchen-detail__item" data-status={item.status.toLowerCase()}>
+                                            <span className="kitchen-detail__qty">{item.quantity}×</span>
+                                            <span className="kitchen-detail__name">
                                                 <strong>{item.menuItem?.name || 'Producto'}</strong>
-                                                {item.notes && <small className="item-note-kitchen">{item.notes}</small>}
+                                                {item.notes && <small>{item.notes}</small>}
                                             </span>
-                                            <span className={`kitchen-item-state status-${item.status.toLowerCase()}`}>{awaitingSend ? 'Pendiente de envío' : kitchenItemStatusLabel[item.status]}{item.status === 'IN_PROGRESS' && prepTime !== null ? ` · ${prepTime} min` : ''}</span>
-                                            {canVoidLines && isVoidableOrderLine(item) && !orderLineVoidBlocker(detailOrder) && (
-                                                <button
-                                                    type="button"
-                                                    className="order-line-void-btn"
-                                                    onClick={() => setVoidTarget({ order: detailOrder, itemId: item.id })}
-                                                    title="Anular línea y registrar merma"
-                                                >
-                                                    Anular
-                                                </button>
-                                            )}
-                                            {detailOrder.status !== 'READY' && (
-                                                <>
-                                                    {canKitchenLineOps && item.status === 'PENDING' && !awaitingSend && (
-                                                        <button
-                                                            onClick={() => handleStartItem(detailOrder.id, item.id)}
-                                                            title="Proceder"
-                                                            className="item-action-btn item-action-start"
-                                                        >
-                                                            <Play size={12} /> Iniciar
-                                                        </button>
-                                                    )}
-                                                    {canKitchenLineOps && item.status === 'IN_PROGRESS' && (
-                                                        <button
-                                                            onClick={() => handleFinishItem(detailOrder.id, item.id)}
-                                                            title="Listo"
-                                                            className="item-action-btn item-action-finish"
-                                                        >
-                                                            <Check size={12} /> Listo
-                                                        </button>
-                                                    )}
-                                                    {item.status === 'DONE' && (
-                                                        <CheckCircle size={16} color="var(--ui-success, #22c55e)" />
-                                                    )}
-                                                </>
-                                            )}
-                                        </div>
+                                            <span className="kitchen-detail__actions">
+                                                <Badge tone={stateTone}>
+                                                    {awaitingSend ? 'Pendiente de envío' : kitchenItemStatusLabel[item.status]}{item.status === 'IN_PROGRESS' && prepTime !== null ? ` · ${prepTime} min` : ''}
+                                                </Badge>
+                                                {canVoidLines && isVoidableOrderLine(item) && !orderLineVoidBlocker(detailOrder) && (
+                                                    <Button
+                                                        size="sm"
+                                                        variant="ghost"
+                                                        icon={Ban}
+                                                        className="kitchen-danger-text"
+                                                        onClick={() => setVoidTarget({ order: detailOrder, itemId: item.id })}
+                                                        title="Anular línea y registrar merma"
+                                                    >
+                                                        Anular
+                                                    </Button>
+                                                )}
+                                                {detailOrder.status !== 'READY' && canKitchenLineOps && item.status === 'PENDING' && !awaitingSend && (
+                                                    <Button size="sm" variant="secondary" icon={Play} onClick={() => handleStartItem(detailOrder.id, item.id)} title="Proceder">
+                                                        Iniciar
+                                                    </Button>
+                                                )}
+                                                {detailOrder.status !== 'READY' && canKitchenLineOps && item.status === 'IN_PROGRESS' && (
+                                                    <Button size="sm" variant="primary" icon={Check} onClick={() => handleFinishItem(detailOrder.id, item.id)} title="Listo">
+                                                        Listo
+                                                    </Button>
+                                                )}
+                                            </span>
+                                        </li>
                                     );
                                 })}
-                            </div>
-                        </div>
-                    </FullScreenModal>
-                );
-            })()}
+                            </ul>
+                        </section>
+                    </div>
+                )}
+            </FullScreenModal>
 
             <KitchenLineVoidModal
                 isOpen={voidTarget !== null}
@@ -780,41 +764,34 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
             <FullScreenModal
                 size="compact"
                 isOpen={showProblemModal}
-                onClose={() => {
-                    setShowProblemModal(false);
-                    setProblemDescription('');
-                }}
+                onClose={closeProblemModal}
                 title="Reportar Problema"
+                subtitle={`Orden #${selectedOrderId ?? ''}`}
+                dirty={problemDescription.trim().length > 0 && !submittingProblem}
+                footer={({ requestClose }) => (
+                    <>
+                        <Button variant="secondary" onClick={requestClose} disabled={submittingProblem}>Cancelar</Button>
+                        <Button
+                            variant="danger"
+                            onClick={() => void submitProblemReport()}
+                            loading={submittingProblem}
+                            disabled={!problemDescription.trim()}
+                        >
+                            Reportar
+                        </Button>
+                    </>
+                )}
             >
-                <p style={{ margin: '0 0 var(--spacing-md) 0', color: 'var(--ui-text-muted)', fontSize: 'var(--font-size-sm)' }}>
-                    Orden #{selectedOrderId}
-                </p>
-                <textarea
-                    className="problem-textarea"
-                    value={problemDescription}
-                    onChange={(e) => setProblemDescription(e.target.value)}
-                    placeholder="Describe el problema con esta orden..."
-                    autoFocus
-                />
-                <div className="problem-modal-actions">
-                    <button
-                        type="button"
-                        className="btn-cancel-problem"
-                        onClick={() => {
-                            setShowProblemModal(false);
-                            setProblemDescription('');
-                        }}
-                    >
-                        Cancelar
-                    </button>
-                    <button
-                        type="button"
-                        className="btn-submit-problem"
-                        onClick={submitProblemReport}
-                    >
-                        Reportar
-                    </button>
-                </div>
+                <Field label="Descripción del problema" htmlFor="kitchen-problem-description" required>
+                    <Textarea
+                        id="kitchen-problem-description"
+                        rows={5}
+                        value={problemDescription}
+                        onChange={(e) => setProblemDescription(e.target.value)}
+                        placeholder="Describe el problema con esta orden..."
+                        autoFocus
+                    />
+                </Field>
             </FullScreenModal>
         </div>
     );

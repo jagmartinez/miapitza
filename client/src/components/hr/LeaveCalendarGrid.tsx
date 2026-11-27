@@ -6,8 +6,17 @@ import './LeaveCalendarGrid.css';
 const MAX_DAYS = 62;
 const WEEKDAYS = ['D', 'L', 'M', 'M', 'J', 'V', 'S'];
 const MONTHS = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
-/** Stable palette per leave type, readable on light and dark themes. */
-const TYPE_COLORS = ['#22c55e', '#3b82f6', '#f59e0b', '#a855f7', '#ec4899', '#14b8a6', '#ef4444', '#84cc16'];
+/** Paleta estable por tipo de ausencia, armada con tokens para que funcione en tema claro y oscuro. */
+const TYPE_COLORS = [
+  'var(--ui-success)',
+  'var(--ui-primary)',
+  'var(--ui-warning)',
+  'color-mix(in srgb, var(--ui-primary) 50%, var(--ui-danger))',
+  'color-mix(in srgb, var(--ui-primary) 50%, var(--ui-success))',
+  'var(--ui-danger)',
+  'color-mix(in srgb, var(--ui-warning) 50%, var(--ui-danger))',
+  'var(--ui-text-muted)',
+];
 
 const FRACTION_VALUE: Record<string, number> = { FULL_DAY: 1, HALF_DAY: 0.5 };
 

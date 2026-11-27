@@ -43,16 +43,6 @@
   grid-column: 1 / -1;
 }
 
-/* Etiquetas implícitas (<label>Texto<Input/></label>) con el mismo aspecto que Field. */
-.hr-modal-form .ui-form-grid label:not(.ui-field__label):not(.ui-check):not([class*='colorOption']) {
-  display: flex;
-  flex-direction: column;
-  gap: var(--ui-space-1);
-  color: var(--ui-text);
-  font-size: 13px;
-  font-weight: 600;
-}
-
 /* Pie de acciones fijo al fondo del único scroll del modal (mismo lugar que el pie de FullScreenModal). */
 
 .hr-modal-form-footer {
@@ -63,7 +53,7 @@
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: var(--ui-space-2);
-  min-height: 42px;
+  min-height: var(--ui-control-md);
   margin: 0 calc(-1 * var(--ui-space-5)) calc(-1 * var(--ui-space-5));
   padding: var(--ui-space-3) var(--ui-space-5);
   border-top: 1px solid var(--ui-border);
@@ -100,4 +90,26 @@
 
 .hr-modal-form > .hr-modal-form-footer {
   margin-top: auto;
+}
+
+/* Acciones del formulario llevadas al pie del modal (FullScreenModal.footer). */
+.hr-modal-footer-slot {
+  display: contents;
+}
+
+.hr-modal-form-footer--modal {
+  position: static;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--ui-space-2);
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border-top: 0;
+  background: transparent;
+}
+
+.hr-modal-form-footer--modal .ui-button {
+  min-width: 118px;
 }

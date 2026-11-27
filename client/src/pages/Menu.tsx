@@ -6,16 +6,14 @@ import { useAppToast } from '../context/ToastContext';
 import { hasAnyRole } from '../utils/authz';
 import {
   AppSelect, Badge, Button, Checkbox, DataTable, EmptyState, Field, FormGrid, FormSection, FullScreenModal, IconButton, Input,
-  PageContent, PageHeader, Skeleton, StatCard, TableToolbar, Textarea, formatNumber, formatPercent,
-  type Column, type Opt, type Tone,
-} from '@/ui';
+  LoadErrorState, PageContent, PageHeader, SegmentedControl, Skeleton, TableToolbar, Tabs, Textarea, formatNumber, formatPercent,
+  type Column, type Opt, type Tone, formatQty} from '@/ui';
 import {
-  Plus, Utensils, Trash2, Image as ImageIcon,
-  Info, ImagePlus, DollarSign, Edit2,
-  SlidersHorizontal, Package, Eye, Layers, Building2, Tag
+  Plus, Utensils, Trash2,
+  ImagePlus, Pencil, Save,
+  SlidersHorizontal, Package, Eye, LayoutGrid, Table2
 } from 'lucide-react';
-import ViewToggle from '../components/ViewToggle';
-import { useViewMode } from '../hooks/useViewMode';
+import { useViewMode, type ViewMode } from '../hooks/useViewMode';
 import { formatLocalDateInput } from '../utils/dateInput';
 import type { Branch, MenuItem, MenuBrand, MenuRecipe, Product, ProductAllowedUnit, UnitOfMeasure } from '../types';
 import {
@@ -25,10 +23,10 @@ import {
 } from '../utils/menuRecipe';
 
 type MenuStatusFilter = 'active' | 'inactive' | 'all';
-const STATUS_FILTER_OPTIONS: Opt<MenuStatusFilter>[] = [
-  { value: 'active', label: 'Activos' },
-  { value: 'inactive', label: 'Inactivos' },
-  { value: 'all', label: 'Activos e inactivos' },
+const STATUS_TABS: { id: MenuStatusFilter; label: string }[] = [
+  { id: 'all', label: 'Todos' },
+  { id: 'active', label: 'Activos' },
+  { id: 'inactive', label: 'Inactivos' },
 ];
 const INVENTORY_EFFECT_OPTIONS: Opt<ModifierInventoryEffect>[] = [
   { value: 'ADD', label: 'Agrega consumo (extra)' },
@@ -41,12 +39,11 @@ import ImageViewer from '../components/ImageViewer';
 import { isCategoryVisibleInMenu } from '../utils/categoryVisibility';
 import { effectiveUnitCost } from '../utils/productCost';
 import {
-  MENU_CLASS_HINT, MENU_CLASS_LABEL, classifyMenu, summarizeMenu,
+  MENU_CLASS_HINT, MENU_CLASS_LABEL, classifyMenu,
   type MenuClass, type MenuSalesRow,
 } from './menuEngineering';
 import s from './Menu.module.css';
 import './Menu.css';
-import './Inventory.css';
 import { getApiErrorMessage } from '../utils/apiError';
 
 // The menu list flags items without any recipe line (legacy DIRECT rows): they
@@ -126,6 +123,10 @@ interface ModifierGroupRow {
 const MODIFIER_PRODUCT_TYPES: Product['type'][] = ['INGREDIENT', 'BOTH', 'INTERMEDIATE', 'PACKAGING'];
 const RECIPE_PRODUCT_TYPES: Product['type'][] = ['INGREDIENT', 'BOTH', 'INTERMEDIATE', 'PACKAGING'];
 
+interface RecipeRow { ing: EditableMenuRecipe; index: number }
+interface DetailComponentRow { component: MenuRecipe; index: number }
+interface PriceRow { branch: Branch; existing?: BranchPriceRow }
+
 function errMsg(error: unknown, fallback: string): string {
   if (typeof error === 'object' && error !== null && 'response' in error) {
     const message = (error as { response?: { data?: { message?: string } } }).response?.data?.message;
@@ -171,6 +172,7 @@ export default function Menu() {
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<CategoryRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [onlyMissingRecipe, setOnlyMissingRecipe] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -260,8 +262,10 @@ export default function Menu() {
       setBrands(brandsRes.data.data || []);
       setProducts((productsRes.data.data || []).filter((p: Product) => RECIPE_PRODUCT_TYPES.includes(p.type)));
       setCategories(categoriesRes.data.data);
+      setLoadError(null);
     } catch (error) {
       console.error('Error loading data:', error);
+      setLoadError('No se pudo cargar el menú y sus ingredientes.');
       showError(errMsg(error, 'No se pudo cargar el menú y sus ingredientes'));
     } finally {
       setLoading(false);
@@ -881,9 +885,6 @@ export default function Menu() {
   };
 
   const visibleItems = filteredItems.filter((item) => selectedClass === 'all' || itemClass(item) === selectedClass);
-  const summary = engineering ? summarizeMenu(engineering) : null;
-  const dogCount = menuItems.filter((item) => itemClass(item) === 'PERRO').length;
-  const noRecipeCount = menuItems.filter((item) => itemClass(item) === 'SIN_RECETA').length;
   const nd = (reason: string) => <span className={s.nd} title={reason}>N/D</span>;
 
   const classOptions: Opt<string>[] = [
@@ -896,31 +897,35 @@ export default function Menu() {
     {
       key: 'name',
       header: 'Plato',
-      width: '2.4fr',
+      type: 'text',
       render: (item) => (
         <div className={s.cellStack}>
           <span className={s.cellTitle}>{item.name}</span>
-          {item.description && <span className={s.cellSub}>{item.description}</span>}
+          {item.description && <span className={s.cellSub1} title={item.description}>{item.description}</span>}
         </div>
       ),
     },
-    { key: 'category', header: 'Categoría', width: '1.2fr', hideBelow: 'md', render: (item) => item.category?.name || '-' },
-    { key: 'brand', header: 'Marca', width: '1fr', hideBelow: 'lg', render: (item) => item.brand?.name || 'Común' },
     {
-      key: 'branch',
-      header: 'Sucursal',
-      width: '1fr',
-      hideBelow: 'lg',
-      render: (item) => (!item.branchId ? 'Global' : branches.find((b) => b.id === item.branchId)?.name || '-'),
+      key: 'category',
+      header: 'Categoría',
+      type: 'text',
+      hideBelow: 'md',
+      render: (item) => (
+        <div className={s.cellStack}>
+          <span>{item.category?.name || '-'}</span>
+          <span className={s.cellSub}>
+            {[item.brand?.name || 'Común', !item.branchId ? 'Global' : branches.find((b) => b.id === item.branchId)?.name || '-'].join(' · ')}
+          </span>
+        </div>
+      ),
     },
-    { key: 'price', header: `Precio (${symbol})`, type: 'money', width: '1fr', accessor: (item) => Number(item.price) },
+    { key: 'price', header: "Precio", type: 'money', accessor: (item) => Number(item.price) },
     ...(showCosts
       ? ([
           {
             key: 'cost',
-            header: `Costo (${symbol})`,
+            header: "Costo",
             type: 'money',
-            width: '1fr',
             render: (item) => {
               const row = costRow(item);
               if (row) return formatNumber(row.cost);
@@ -931,7 +936,6 @@ export default function Menu() {
             key: 'foodCost',
             header: 'Food cost',
             type: 'percent',
-            width: '1fr',
             render: (item) => {
               const row = costRow(item);
               return row && row.price > 0 ? formatPercent((row.cost / row.price) * 100) : nd('Sin costo conocido');
@@ -939,9 +943,8 @@ export default function Menu() {
           },
           {
             key: 'margin',
-            header: `Margen (${symbol})`,
+            header: "Margen",
             type: 'money',
-            width: '1fr',
             render: (item) => {
               const row = costRow(item);
               return row ? formatNumber(row.margin) : nd('Sin costo conocido');
@@ -949,15 +952,15 @@ export default function Menu() {
           },
           {
             key: 'sold',
-            header: 'Vendidos (30 días)',
+            header: 'Vend. 30 d',
+            headerTitle: 'Unidades vendidas en los últimos 30 días',
             type: 'number',
-            width: '1fr',
             render: (item) => (engineering ? formatNumber(salesById.get(item.id)?.qtySold ?? 0, 0) : nd('No se pudieron cargar las ventas')),
           },
           {
             key: 'class',
             header: 'Clasificación',
-            width: '1.4fr',
+            type: 'status',
             render: (item) => {
               const cls = itemClass(item);
               if (!cls) return nd('No se pudo cargar la clasificación');
@@ -971,7 +974,7 @@ export default function Menu() {
     {
       key: 'status',
       header: 'Estado',
-      width: '1.2fr',
+      type: 'status',
       render: (item) => (
         <span className={s.rowActions}>
           <Badge tone={item.active ? 'success' : 'neutral'}>{item.active ? 'Activo' : 'Inactivo'}</Badge>
@@ -987,13 +990,214 @@ export default function Menu() {
       key: 'actions',
       header: 'Acciones',
       type: 'actions',
-      width: '8rem',
+      width: '136px',
       render: (item) => (
         <div className={s.rowActions}>
-          <IconButton icon={Eye} size="sm" label={`Ver detalle de ${item.name}`} onClick={() => void handleOpenDetail(item)} />
-          {canMutateMenu && <IconButton icon={Edit2} size="sm" label={`Editar ${item.name}`} onClick={() => void handleOpenSidebar(item)} />}
-          {canMutateMenu && <IconButton icon={Trash2} size="sm" label={`Eliminar ${item.name}`} onClick={() => handleDelete(item.id)} />}
+          <IconButton icon={Eye} size="sm" tooltip="Ver detalle" label={`Ver detalle de ${item.name}`} onClick={() => void handleOpenDetail(item)} />
+          {canMutateMenu && <IconButton icon={Pencil} size="sm" tooltip="Editar" label={`Editar ${item.name}`} onClick={() => void handleOpenSidebar(item)} />}
+          {canMutateMenu && <IconButton icon={Trash2} size="sm" tone="danger" tooltip="Eliminar" label={`Eliminar ${item.name}`} onClick={() => handleDelete(item.id)} />}
         </div>
+      ),
+    },
+  ];
+
+  const recipeColumns: Column<RecipeRow>[] = [
+    {
+      key: 'name',
+      header: 'Ingrediente',
+      type: 'text',
+      render: ({ ing }) => (
+        <div className={s.cellStack}>
+          <span className={s.cellTitle}>{ing.productName}</span>
+          {!ing.unitConfigured && <span className={s.unitError}>Unidad no configurada</span>}
+        </div>
+      ),
+    },
+    {
+      key: 'quantity',
+      header: 'Cantidad',
+      width: '140px',
+      type: 'qty',
+      render: ({ ing, index }) => canMutateMenu ? (
+        <Input
+          type="number"
+          min="0.001"
+          step="0.001"
+          aria-label={`Cantidad de ${ing.productName}`}
+          value={ing.quantity}
+          onChange={(event) => updateIngredientQuantity(index, event.target.value)}
+        />
+      ) : `${formatQty(ing.quantity)} ${ing.unit}`,
+    },
+    ...(canMutateMenu ? ([{
+      key: 'unit',
+      header: 'Unidad',
+      width: '200px',
+      render: ({ ing, index }: RecipeRow) => {
+        const allowedUnits = recipeUnitsByProduct[ing.productId] || [];
+        const unitOptions: Opt<string>[] = allowedUnits.map((unit) => ({
+          value: unit.abbreviation,
+          label: unit.name && unit.name !== unit.abbreviation ? `${unit.name} (${unit.abbreviation})` : unit.abbreviation,
+        }));
+        const selectedUnit = unitOptions.find((option) => option.value.toLowerCase() === ing.unit.toLowerCase());
+        if (!selectedUnit && ing.unit) unitOptions.push({ value: ing.unit, label: ing.unit });
+        return (
+          <AppSelect<string>
+            aria-label={`Unidad de ${ing.productName}`}
+            options={unitOptions}
+            value={selectedUnit?.value ?? (ing.unit || null)}
+            onChange={(v) => updateIngredientUnit(index, v ?? '')}
+            isClearable={false}
+            isDisabled={unitOptions.length === 0}
+          />
+        );
+      },
+    }] as Column<RecipeRow>[]) : []),
+    {
+      key: 'cost',
+      header: 'Costo',
+      type: 'money',
+      render: ({ ing }) => (ing.unitConfigured ? formatMoney(calculateIngredientLineCost(ing)) : 'N/D'),
+    },
+    ...(canMutateMenu ? ([{
+      key: 'actions',
+      header: 'Acciones',
+      type: 'actions',
+      width: '72px',
+      render: ({ ing, index }: RecipeRow) => (
+        <IconButton icon={Trash2} size="sm" tone="danger" tooltip="Quitar" label={`Quitar ${ing.productName}`} onClick={() => removeIngredient(index)} />
+      ),
+    }] as Column<RecipeRow>[]) : []),
+  ];
+
+  const detailComponentColumns: Column<DetailComponentRow>[] = [
+    { key: 'index', header: '#', type: 'number', decimals: 0, render: ({ index }) => index + 1 },
+    {
+      key: 'name',
+      header: 'Insumo',
+      type: 'text',
+      render: ({ component }) => (
+        <div className={s.cellStack}>
+          <span className={s.cellTitle}>{component.product.name}</span>
+          <span className={s.cellSub}>Insumo #{component.product.id}</span>
+        </div>
+      ),
+    },
+    {
+      key: 'quantity',
+      header: 'Cantidad',
+      type: 'qty',
+      render: ({ component }) => `${formatQty(component.quantity)} ${component.unit || component.unitOfMeasure?.abbreviation || component.product.unit || ''}`,
+    },
+    {
+      key: 'cost',
+      header: 'Costo unitario ref.',
+      type: 'money',
+      render: ({ component }) => formatMoney(effectiveUnitCost(component.product.currentAverageCost, component.product.cost)),
+    },
+  ];
+
+  const modifierColumns: Column<ModifierRow>[] = [
+    {
+      key: 'name',
+      header: 'Modificador',
+      type: 'text',
+      render: (modifier) => <span className={s.cellTitle}>{modifier.name}</span>,
+    },
+    {
+      key: 'price',
+      header: 'Precio extra',
+      type: 'money',
+      render: (modifier) => (Number(modifier.price) > 0 ? `+${formatMoney(Number(modifier.price))}` : 'Sin costo'),
+    },
+    {
+      key: 'inventory',
+      header: 'Inventario',
+      type: 'text',
+      render: (modifier) => {
+        if (modifier.productId && modifier.inventoryEffect === 'REMOVE') {
+          return (
+            <span className={s.modInfo}>
+              <Package size={14} aria-hidden="true" />
+              {modifier.consumeQuantity != null
+                ? `Quita ${formatNumber(modifier.consumeQuantity, 3)} ${modifier.unit?.abbreviation || ''} de ${modifier.product?.name || 'producto'} de la receta`
+                : `Quita ${modifier.product?.name || 'el ingrediente'} de la receta`}
+            </span>
+          );
+        }
+        if (modifier.productId) {
+          return (
+            <span className={s.modInfo}>
+              <Package size={14} aria-hidden="true" />
+              Consume {formatNumber(modifier.consumeQuantity ?? 0, 3)} {modifier.unit?.abbreviation || ''} de {modifier.product?.name || 'producto'}
+            </span>
+          );
+        }
+        return <span className={s.modMuted}>Sin consumo de inventario</span>;
+      },
+    },
+    {
+      key: 'actions',
+      header: 'Acciones',
+      type: 'actions',
+      width: '100px',
+      render: (modifier) => (
+        <div className={s.rowActions}>
+          <IconButton icon={Pencil} size="sm" tooltip="Editar" label={`Editar ${modifier.name}`} onClick={() => handleEditModifier(modifier)} />
+          <IconButton icon={Trash2} size="sm" tone="danger" tooltip="Eliminar" label={`Eliminar ${modifier.name}`} onClick={() => void handleDeleteModifier(modifier)} />
+        </div>
+      ),
+    },
+  ];
+
+  const priceColumns: Column<PriceRow>[] = [
+    {
+      key: 'branch',
+      header: 'Sucursal',
+      type: 'text',
+      render: ({ branch, existing }) => (
+        <div className={s.cellStack}>
+          <span className={s.cellTitle}>{branch.name}</span>
+          <span className={s.cellSub}>
+            {branch.code ? `${branch.code} · ` : ''}
+            {existing ? 'Override activo' : 'Usa precio base'}
+          </span>
+        </div>
+      ),
+    },
+    {
+      key: 'price',
+      header: 'Precio',
+      type: 'money',
+      width: '180px',
+      render: ({ branch, existing }) => (
+        <Input
+          type="number"
+          step="0.01"
+          prefix={symbol}
+          aria-label={`Precio en ${branch.name}`}
+          value={branchPriceDrafts[branch.id] ?? amountDraft(existing ? existing.price : formData.price || 0)}
+          onChange={(e) => setBranchPriceDrafts((prev) => ({ ...prev, [branch.id]: e.target.value }))}
+          readOnly={!canSetBranchPrices}
+          disabled={!canSetBranchPrices}
+        />
+      ),
+    },
+    {
+      key: 'actions',
+      header: 'Acciones',
+      type: 'actions',
+      width: '72px',
+      render: ({ branch }) => (
+        <IconButton
+          icon={Save}
+          size="sm"
+          tone="primary"
+          tooltip={savingBranchPriceId === branch.id ? 'Guardando...' : 'Guardar precio'}
+          label={`Guardar precio de ${branch.name}`}
+          onClick={() => void handleSaveBranchPrice(branch.id)}
+          disabled={!canSetBranchPrices || savingBranchPriceId === branch.id}
+        />
       ),
     },
   ];
@@ -1014,758 +1218,618 @@ export default function Menu() {
 
   return (
     <PageContent>
-      <div className={!canMutateMenu ? 'menu-readonly' : undefined}>
-      <ImageViewer
-        isOpen={isViewerOpen}
-        onClose={() => setIsViewerOpen(false)}
-        images={viewerImages}
-        initialIndex={viewerInitialIndex}
-      />
-      <PageHeader
-        title="Menú"
-        description={`${visibleItems.length} platos catalogados en el sistema`}
-        actions={
-          <>
-            {canSetBranchPrices && (
-              <Button icon={SlidersHorizontal} onClick={openModifierModal}>Modificadores</Button>
-            )}
-            {canMutateMenu && (
-              <Button variant="primary" icon={Plus} onClick={() => void handleOpenSidebar()}>Nuevo plato</Button>
-            )}
-          </>
-        }
-      />
-
-      {showCosts && engineeringError && (
-        <div className={s.banner} role="alert">
-          <span>{engineeringError} Los costos, ventas y clasificación se muestran como N/D y no entran en ningún total.</span>
-          <Button size="sm" onClick={() => void loadEngineering()}>Reintentar</Button>
-        </div>
-      )}
-
-      {showCosts && summary && (
-        <div className={s.stats}>
-          <StatCard
-            label="Margen ponderado (30 días)"
-            value={summary.weightedMarginPct === null ? 'N/D' : formatPercent(summary.weightedMarginPct)}
-            context={
-              summary.weightedMarginPct === null
-                ? 'Ningún plato vendido tiene costo conocido.'
-                : `Utilidad ${formatMoney(summary.profit)} sobre ventas a precio de lista de ${formatMoney(summary.revenue)} en ${summary.costedCount} platos con costo.${summary.excludedWithoutCost > 0 ? ` ${summary.excludedWithoutCost} platos vendidos sin costo quedan fuera.` : ''}`
-            }
-            tone={summary.excludedWithoutCost > 0 ? 'warning' : 'primary'}
+    <ImageViewer
+      isOpen={isViewerOpen}
+      onClose={() => setIsViewerOpen(false)}
+      images={viewerImages}
+      initialIndex={viewerInitialIndex}
+    />
+    <PageHeader
+      title="Menú"
+      description={`${visibleItems.length} platos catalogados en el sistema`}
+      actions={
+        <>
+          <SegmentedControl<ViewMode>
+            ariaLabel="Vista"
+            iconOnly
+            options={[
+              { value: 'cards', label: 'Tarjetas', icon: LayoutGrid },
+              { value: 'table', label: 'Tabla', icon: Table2 },
+            ]}
+            value={viewMode}
+            onChange={setViewMode}
           />
-          {dogCount > 0 && (
-            <StatCard
-              label="Platos por revisar (Perro)"
-              value={formatNumber(dogCount, 0)}
-              context="Venden poco y dejan poco margen en 30 días: candidatos a rediseñar, subir de precio o retirar."
-              tone="warning"
-              action={{ label: 'Ver platos', onClick: () => setSelectedClass('PERRO') }}
-            />
+          {canMutateMenu && (
+            <Button variant="primary" icon={Plus} onClick={() => void handleOpenSidebar()}>Nuevo plato</Button>
           )}
-          {noRecipeCount > 0 && (
-            <StatCard
-              label="Platos sin receta"
-              value={formatNumber(noRecipeCount, 0)}
-              context="No tienen costo ni descuentan inventario al venderse."
-              tone="danger"
-              action={{ label: 'Ver platos', onClick: () => setSelectedClass('SIN_RECETA') }}
-            />
-          )}
-        </div>
-      )}
+        </>
+      }
+    />
 
-      <TableToolbar actions={<ViewToggle value={viewMode} onChange={setViewMode} />}>
-        <div className={s.search}>
-          <Input
-            type="search"
-            aria-label="Buscar plato"
-            placeholder="Buscar por nombre o descripción..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
-        </div>
-        <div className={s.filter}>
-          <AppSelect<string>
-            aria-label="Filtrar por categoría"
-            options={categoryOptions}
-            value={selectedCategory}
-            onChange={(v) => setSelectedCategory(v ?? 'all')}
-            isClearable={false}
-          />
-        </div>
-        <div className={s.filter}>
-          <AppSelect<string>
-            aria-label="Filtrar por sucursal"
-            options={branchOptions}
-            value={selectedBranch}
-            onChange={(v) => setSelectedBranch(v ?? 'all')}
-            isClearable={false}
-          />
-        </div>
-        {brands.length > 0 && (
-          <div className={s.filter}>
-            <AppSelect<string>
-              aria-label="Filtrar por marca"
-              options={brandOptions}
-              value={selectedBrand}
-              onChange={(v) => setSelectedBrand(v ?? 'all')}
-              isClearable={false}
-            />
-          </div>
-        )}
-        <div className={s.filter}>
-          <AppSelect<MenuStatusFilter>
-            aria-label="Filtrar por estado"
-            options={STATUS_FILTER_OPTIONS}
-            value={selectedStatus}
-            onChange={(v) => setSelectedStatus(v ?? 'active')}
-            isClearable={false}
-          />
-        </div>
-        {showCosts && engineering && (
-          <div className={s.filter}>
-            <AppSelect<string>
-              aria-label="Filtrar por clasificación"
-              options={classOptions}
-              value={selectedClass}
-              onChange={(v) => setSelectedClass((v ?? 'all') as ItemClass | 'all')}
-              isClearable={false}
-            />
-          </div>
-        )}
-      </TableToolbar>
+    {showCosts && engineeringError && (
+      <LoadErrorState
+        message={`${engineeringError} Los costos, ventas y clasificación se muestran como N/D y no entran en ningún total.`}
+        onRetry={() => void loadEngineering()}
+      />
+    )}
 
-      {missingRecipeCount > 0 && (
-        <div className={s.noRecipeBar} role="status">
-          <Badge tone="warning">
-            {missingRecipeCount} {missingRecipeCount === 1 ? 'producto no tiene' : 'productos no tienen'} receta y no descuentan inventario al venderse.
-          </Badge>
-          <Button size="sm" aria-pressed={onlyMissingRecipe} onClick={() => setOnlyMissingRecipe((value) => !value)}>
-            {onlyMissingRecipe ? 'Ver todos' : 'Ver solo sin receta'}
-          </Button>
-        </div>
-      )}
+    <Tabs
+      ariaLabel="Filtrar platos por estado"
+      active={selectedStatus}
+      onChange={(id) => setSelectedStatus(id as MenuStatusFilter)}
+      tabs={STATUS_TABS.map((t) => ({
+        ...t,
+        badge: t.id === 'all' ? menuItems.length : menuItems.filter((item) => item.active === (t.id === 'active')).length,
+      }))}
+    />
 
-      {viewMode === 'table' && (
-        <DataTable<MenuItem>
-          ariaLabel="Platos del menú"
-          columns={columns}
-          rows={visibleItems}
-          rowKey={(item) => item.id}
-          resetKey={`${selectedCategory}-${selectedBranch}-${selectedBrand}-${selectedStatus}-${onlyMissingRecipe}-${selectedClass}-${searchQuery}`}
-          onRowClick={(item) => void handleOpenDetail(item)}
-          empty={<EmptyState icon={Utensils} title="No hay platos que coincidan con los filtros" />}
+    <TableToolbar
+      actions={canSetBranchPrices ? (
+        <Button icon={SlidersHorizontal} onClick={openModifierModal}>Modificadores</Button>
+      ) : undefined}
+    >
+      <Input
+        type="search"
+        aria-label="Buscar plato"
+        placeholder="Buscar plato..."
+        value={searchQuery}
+        onChange={(e) => setSearchQuery(e.target.value)}
+      />
+      <AppSelect<string>
+        aria-label="Filtrar por categoría"
+        options={categoryOptions}
+        value={selectedCategory}
+        onChange={(v) => setSelectedCategory(v ?? 'all')}
+        isClearable={false}
+      />
+      <AppSelect<string>
+        aria-label="Filtrar por sucursal"
+        options={branchOptions}
+        value={selectedBranch}
+        onChange={(v) => setSelectedBranch(v ?? 'all')}
+        isClearable={false}
+      />
+      {brands.length > 0 && (
+        <AppSelect<string>
+          aria-label="Filtrar por marca"
+          options={brandOptions}
+          value={selectedBrand}
+          onChange={(v) => setSelectedBrand(v ?? 'all')}
+          isClearable={false}
         />
       )}
-
-      {viewMode === 'cards' && (
-        visibleItems.length > 0 ? (
-          <div className="menu-grid">
-            {visibleItems.map(item => (
-              <MenuItemCard
-                key={item.id}
-                item={item}
-                onClick={() => void handleOpenDetail(item)}
-                onEdit={() => handleOpenSidebar(item)}
-                onDelete={() => handleDelete(item.id)}
-                onImageClick={handleImageClick}
-              />
-            ))}
-          </div>
-        ) : (
-          <EmptyState icon={Utensils} title="No hay platos que coincidan con los filtros" />
-        )
+      {showCosts && engineering && (
+        <AppSelect<string>
+          aria-label="Filtrar por clasificación"
+          options={classOptions}
+          value={selectedClass}
+          onChange={(v) => setSelectedClass((v ?? 'all') as ItemClass | 'all')}
+          isClearable={false}
+        />
       )}
+    </TableToolbar>
 
-      <FullScreenModal
-        isOpen={detailOpen}
-        onClose={() => { setDetailOpen(false); setViewingItem(null); setDetailError(null); }}
-        title="Detalle del Plato"
-        subtitle={viewingItem?.name}
-        footer={viewingItem ? ({ requestClose }) => (
-          <>
-            <Button variant="ghost" onClick={requestClose}>Cerrar</Button>
-            {canMutateMenu && (
-              <Button
-                variant="primary"
-                icon={Edit2}
-                onClick={() => {
-                  const item = viewingItem;
-                  setDetailOpen(false);
-                  void handleOpenSidebar(item as unknown as MenuItem);
-                }}
-              >
-                Editar plato
-              </Button>
-            )}
-          </>
-        ) : undefined}
-      >
-        {detailLoading && <Skeleton height={200} />}
-        {!detailLoading && detailError && (
-          <EmptyState
-            icon={Utensils}
-            title="No se pudo cargar el detalle"
-            description={detailError}
-            action={<Button onClick={() => setDetailOpen(false)}>Cerrar</Button>}
-          />
-        )}
-        {!detailLoading && viewingItem && (() => {
-          const price = Number(viewingItem.price) || 0;
-          const hasRecipe = (viewingItem.recipes?.length ?? 0) > 0;
-          const totalCost = Number(viewingItem.totalCost) || 0;
-          const margin = Number(viewingItem.margin ?? price - totalCost) || 0;
-          const marginPercent = price > 0 ? (margin / price) * 100 : 0;
-          const branchName = viewingItem.branch?.name
-            ?? branches.find((branch) => branch.id === viewingItem.branchId)?.name
-            ?? 'Todas las sucursales';
+    {missingRecipeCount > 0 && (
+      <div className={s.noRecipeBar} role="status">
+        <Badge tone="warning">
+          {missingRecipeCount} {missingRecipeCount === 1 ? 'producto no tiene' : 'productos no tienen'} receta y no descuentan inventario al venderse.
+        </Badge>
+        <Button aria-pressed={onlyMissingRecipe} onClick={() => setOnlyMissingRecipe((value) => !value)}>
+          {onlyMissingRecipe ? 'Ver todos' : 'Ver solo sin receta'}
+        </Button>
+      </div>
+    )}
 
-          return (
-            <div className="inventory-detail menu-item-detail" data-testid="menu-item-detail">
-              <div className="inventory-detail-hero">
-                <div className="inventory-detail-hero-main">
-                  <div className="inventory-detail-icon" aria-hidden="true"><Utensils size={28} /></div>
-                  <div className="inventory-detail-identity">
-                    <span className="inventory-detail-eyebrow">Ficha del catálogo</span>
-                    <h3>{viewingItem.name}</h3>
-                    <div className="inventory-detail-meta">
-                      <span className="inventory-detail-badge sku">{viewingItem.category?.name ?? 'Sin categoría'}</span>
-                      <div className="inventory-detail-status-row">
-                        <span className={`inventory-detail-badge ${viewingItem.active ? 'active' : 'inactive'}`}>
-                          {viewingItem.active ? 'Activo' : 'Inactivo'}
-                        </span>
-                        <span className="inventory-detail-badge ok">{viewingItem.recipes?.length ?? 0} componentes</span>
-                      </div>
+    {viewMode === 'table' && (
+      <DataTable<MenuItem>
+        ariaLabel="Platos del menú"
+        columns={columns}
+        rows={visibleItems}
+        rowKey={(item) => item.id}
+        resetKey={`${selectedCategory}-${selectedBranch}-${selectedBrand}-${selectedStatus}-${onlyMissingRecipe}-${selectedClass}-${searchQuery}`}
+        onRowClick={(item) => void handleOpenDetail(item)}
+        error={loadError}
+        onRetry={() => void loadData()}
+        empty={<EmptyState icon={Utensils} title="No hay platos que coincidan con los filtros" />}
+      />
+    )}
+
+    {viewMode === 'cards' && (
+      loadError ? (
+        <LoadErrorState message={loadError} onRetry={() => void loadData()} />
+      ) : visibleItems.length > 0 ? (
+        <div className={`menu-grid ${canMutateMenu ? '' : 'menu-readonly'}`.trim()}>
+          {visibleItems.map(item => (
+            <MenuItemCard
+              key={item.id}
+              item={item}
+              onClick={() => void handleOpenDetail(item)}
+              onEdit={() => handleOpenSidebar(item)}
+              onDelete={() => handleDelete(item.id)}
+              onImageClick={handleImageClick}
+            />
+          ))}
+        </div>
+      ) : (
+        <EmptyState icon={Utensils} title="No hay platos que coincidan con los filtros" />
+      )
+    )}
+
+    <FullScreenModal
+      isOpen={detailOpen}
+      onClose={() => { setDetailOpen(false); setViewingItem(null); setDetailError(null); }}
+      title="Detalle del Plato"
+      subtitle={viewingItem?.name}
+      footer={viewingItem ? ({ requestClose }) => (
+        <>
+          <Button onClick={requestClose}>Cerrar</Button>
+          {canMutateMenu && (
+            <Button
+              variant="primary"
+              icon={Pencil}
+              onClick={() => {
+                const item = viewingItem;
+                setDetailOpen(false);
+                void handleOpenSidebar(item as unknown as MenuItem);
+              }}
+            >
+              Editar plato
+            </Button>
+          )}
+        </>
+      ) : undefined}
+    >
+      {detailLoading && <Skeleton height={200} />}
+      {!detailLoading && detailError && (
+        <EmptyState
+          icon={Utensils}
+          title="No se pudo cargar el detalle"
+          description={detailError}
+          action={<Button onClick={() => setDetailOpen(false)}>Cerrar</Button>}
+        />
+      )}
+      {!detailLoading && viewingItem && (() => {
+        const price = Number(viewingItem.price) || 0;
+        const hasRecipe = (viewingItem.recipes?.length ?? 0) > 0;
+        const totalCost = Number(viewingItem.totalCost) || 0;
+        const margin = Number(viewingItem.margin ?? price - totalCost) || 0;
+        const marginPercent = price > 0 ? (margin / price) * 100 : 0;
+        const branchName = viewingItem.branch?.name
+          ?? branches.find((branch) => branch.id === viewingItem.branchId)?.name
+          ?? 'Todas las sucursales';
+
+        return (
+          <div className={s.detail} data-testid="menu-item-detail">
+            <header className={s.detailHead}>
+              <h3>{viewingItem.name}</h3>
+              <div className={s.inline}>
+                <Badge>{viewingItem.category?.name ?? 'Sin categoría'}</Badge>
+                <Badge tone={viewingItem.active ? 'success' : 'neutral'} dot>{viewingItem.active ? 'Activo' : 'Inactivo'}</Badge>
+                <Badge tone="primary">{viewingItem.recipes?.length ?? 0} componentes</Badge>
+              </div>
+            </header>
+
+            <FormSection title="Perfil del plato">
+              <dl className={s.facts}>
+                <div><dt>Categoría</dt><dd>{viewingItem.category?.name ?? 'Sin categoría'}</dd></div>
+                <div><dt>Sucursal</dt><dd>{branchName}</dd></div>
+                <div><dt>Marca</dt><dd>{viewingItem.brand?.name ?? 'Común'}</dd></div>
+                <div><dt>Galería</dt><dd>{viewingItem.images?.length ?? 0} imágenes</dd></div>
+              </dl>
+            </FormSection>
+
+            <FormSection title="Precio, costo y margen" description="Los costos usan la receta y el costo efectivo vigente de cada insumo (calculado en servidor).">
+              <dl className={s.facts}>
+                <div><dt>Precio de venta</dt><dd>{formatMoney(price)}</dd></div>
+                <div><dt>Costo estimado de receta</dt><dd>{hasRecipe ? formatMoney(totalCost) : 'N/D'}</dd></div>
+                <div><dt>Utilidad estimada</dt><dd>{hasRecipe ? formatMoney(margin) : 'N/D'}</dd></div>
+                <div><dt>Margen</dt><dd>{hasRecipe ? formatPercent(marginPercent, 1) : 'N/D: el plato no tiene receta'}</dd></div>
+              </dl>
+            </FormSection>
+
+            <FormSection title="Componentes de la receta">
+              <DataTable<DetailComponentRow>
+                ariaLabel="Componentes de la receta"
+                variant="flat"
+                columns={detailComponentColumns}
+                rows={(viewingItem.recipes ?? []).map((component, index) => ({ component, index }))}
+                rowKey={(row) => row.component.id}
+                empty="Este plato no tiene componentes de receta registrados."
+                hidePaginationIfSinglePage
+                stackOnMobile
+              />
+            </FormSection>
+
+            {viewingBranchPrices.length > 0 && (
+              <FormSection title="Precios por sucursal">
+                <dl className={s.facts}>
+                  {viewingBranchPrices.map((row) => (
+                    <div key={row.branchId}>
+                      <dt>{branches.find((branch) => branch.id === row.branchId)?.name ?? `Sucursal #${row.branchId}`}</dt>
+                      <dd>{formatMoney(Number(row.price))}</dd>
                     </div>
-                  </div>
-                </div>
-                <div className="inventory-detail-stock-summary menu-item-price-summary">
-                  <span>Precio de venta</span>
-                  <strong>{formatMoney(price)}</strong>
-                  <div className="inventory-detail-stock-track" aria-hidden="true"><span style={{ width: `${Math.max(0, Math.min(100, marginPercent))}%` }} /></div>
-                  <small>{hasRecipe ? `Margen estimado ${formatNumber(marginPercent, 1)}%` : 'Margen N/D: el plato no tiene receta'}</small>
-                </div>
-              </div>
-
-              <section className="inventory-detail-section">
-                <div className="modal-section-header"><Package size={18} /><h3>Perfil del plato</h3></div>
-                <div className="inventory-detail-profile-grid">
-                  <div className="inventory-detail-profile-item"><Tag size={18} /><div><span>Categoría</span><strong>{viewingItem.category?.name ?? 'Sin categoría'}</strong></div></div>
-                  <div className="inventory-detail-profile-item"><Building2 size={18} /><div><span>Sucursal</span><strong>{branchName}</strong></div></div>
-                  <div className="inventory-detail-profile-item"><Layers size={18} /><div><span>Marca</span><strong>{viewingItem.brand?.name ?? 'Común'}</strong></div></div>
-                  <div className="inventory-detail-profile-item"><ImageIcon size={18} /><div><span>Galería</span><strong>{viewingItem.images?.length ?? 0} imágenes</strong></div></div>
-                </div>
-              </section>
-
-              <section className="inventory-detail-section">
-                <div className="modal-section-header"><DollarSign size={18} /><h3>Precio, costo y margen</h3></div>
-                <div className="inventory-detail-finance">
-                  <div className="inventory-detail-effective-cost">
-                    <div><span>Costo estimado de receta</span><strong>{hasRecipe ? formatMoney(totalCost) : 'N/D'}</strong></div>
-                    <span className="inventory-detail-cost-source">Calculado en servidor</span>
-                  </div>
-                  <dl className="inventory-detail-finance-breakdown">
-                    <div><dt>Precio de venta</dt><dd>{formatMoney(price)}</dd></div>
-                    <div><dt>Utilidad estimada</dt><dd>{hasRecipe ? formatMoney(margin) : 'N/D'}</dd></div>
-                    <div><dt>Margen</dt><dd>{hasRecipe ? `${formatNumber(marginPercent, 1)}%` : 'N/D'}</dd></div>
-                  </dl>
-                  <p className="inventory-detail-finance-note">Los costos utilizan la receta y el costo efectivo vigente de cada insumo.</p>
-                </div>
-              </section>
-
-              <section className="inventory-detail-section">
-                <div className="modal-section-header"><Layers size={18} /><h3>Componentes de la receta</h3></div>
-                {viewingItem.recipes?.length ? (
-                  <div className="menu-detail-component-list">
-                    {viewingItem.recipes.map((component, index) => {
-                      const unit = component.unit || component.unitOfMeasure?.abbreviation || component.product.unit || '';
-                      const referenceCost = effectiveUnitCost(component.product.currentAverageCost, component.product.cost);
-                      return (
-                        <article key={component.id} className="menu-detail-component">
-                          <span className="menu-detail-component-index">{index + 1}</span>
-                          <div><strong>{component.product.name}</strong><span>Insumo #{component.product.id}</span></div>
-                          <div className="menu-detail-number"><span>Cantidad</span><strong>{Number(component.quantity).toLocaleString('es-NI', { maximumFractionDigits: 6 })} {unit}</strong></div>
-                          <div className="menu-detail-number"><span>Costo unitario ref.</span><strong>{formatMoney(referenceCost)}</strong></div>
-                        </article>
-                      );
-                    })}
-                  </div>
-                ) : <p className="inventory-detail-observation">Este plato no tiene componentes de receta registrados.</p>}
-              </section>
-
-              {viewingBranchPrices.length > 0 && (
-                <section className="inventory-detail-section">
-                  <div className="modal-section-header"><Building2 size={18} /><h3>Precios por sucursal</h3></div>
-                  <div className="menu-detail-price-grid">
-                    {viewingBranchPrices.map((row) => (
-                      <div key={row.branchId}>
-                        <span>{branches.find((branch) => branch.id === row.branchId)?.name ?? `Sucursal #${row.branchId}`}</span>
-                        <strong>{formatMoney(Number(row.price))}</strong>
-                      </div>
-                    ))}
-                  </div>
-                </section>
-              )}
-
-              {Boolean(viewingItem.images?.length) && (
-                <section className="inventory-detail-section">
-                  <div className="modal-section-header"><ImageIcon size={18} /><h3>Galería</h3></div>
-                  <div className="menu-detail-gallery">
-                    {viewingItem.images?.map((image, index) => (
-                      <button key={image.id} type="button" onClick={() => handleImageClick(viewingItem, index)} aria-label={`Abrir imagen ${index + 1} de ${viewingItem.name}`}>
-                        <img src={image.imageUrl} alt={`${viewingItem.name} ${index + 1}`} />
-                      </button>
-                    ))}
-                  </div>
-                </section>
-              )}
-
-              <section className="inventory-detail-section">
-                <div className="modal-section-header"><Info size={18} /><h3>Descripción</h3></div>
-                <p className="inventory-detail-observation">{viewingItem.description || 'Este plato no tiene descripción adicional.'}</p>
-              </section>
-            </div>
-          );
-        })()}
-      </FullScreenModal>
-
-      <FullScreenModal
-        isOpen={isSidebarOpen}
-        onClose={() => { setIsSidebarOpen(false); setActiveTab('info'); }}
-        title={editingItem ? 'Editar Plato' : 'Nuevo Plato'}
-        subtitle={editingItem?.name}
-        aside={(() => {
-          const price = parseFloat(formData.price) || 0;
-          const unconfigured = recipe.filter((ing) => !ing.unitConfigured).length;
-          const totalCost = recipe.reduce((sum, ing) => sum + calculateIngredientLineCost(ing), 0);
-          const hasCost = recipe.length > 0 && unconfigured < recipe.length;
-          const profit = price - totalCost;
-          const margin = price > 0 ? (profit / price) * 100 : 0;
-          const foodCost = price > 0 ? (totalCost / price) * 100 : 0;
-          const known = hasCost && price > 0;
-          return (
-            <section className={s.costPanel} aria-label="Costeo del plato">
-              <h3>Costeo</h3>
-              <div className={s.costRow}><span>Precio de venta</span><strong>{price > 0 ? formatMoney(price) : 'N/D'}</strong></div>
-              <div className={s.costRow}><span>Costo de materia prima</span><strong>{hasCost ? formatMoney(totalCost) : 'N/D'}</strong></div>
-              <div className={s.costRow}><span>Utilidad por plato</span><strong>{known ? formatMoney(profit) : 'N/D'}</strong></div>
-              <div className={s.costRow}>
-                <span>Costo de alimentos</span>
-                <strong>
-                  {known ? formatPercent(foodCost, 1) : 'N/D'}
-                  {known && goals.foodCostPct > 0 && (
-                    <Badge tone={foodCost <= goals.foodCostPct ? 'success' : 'danger'}>meta ≤ {formatPercent(goals.foodCostPct, 0)}</Badge>
-                  )}
-                </strong>
-              </div>
-              <div className={s.costRow}>
-                <span>Margen</span>
-                <strong>
-                  {known ? formatPercent(margin, 1) : 'N/D'}
-                  {known && goals.grossMarginPct > 0 && (
-                    <Badge tone={margin >= goals.grossMarginPct ? 'success' : 'warning'}>meta ≥ {formatPercent(goals.grossMarginPct, 0)}</Badge>
-                  )}
-                </strong>
-              </div>
-              <p className={s.costNote}>
-                {hasCost
-                  ? `Suma de ${recipe.length - unconfigured} ingredientes.${unconfigured > 0 ? ` Excluye ${unconfigured} con unidad no configurada.` : ''}`
-                  : 'Agrega ingredientes con unidad configurada en la pestaña Costos para calcular el costo.'}
-                {goals.foodCostPct > 0 || goals.grossMarginPct > 0 ? ' Metas desde Configuración.' : ''}
-              </p>
-            </section>
-          );
-        })()}
-        tabs={[
-          { id: 'info', label: 'Información' },
-          { id: 'recipe', label: 'Costos' },
-          { id: 'gallery', label: 'Galería' },
-          ...(editingItem ? [{ id: 'pricing', label: 'Precios' }] : []),
-        ]}
-        activeTab={activeTab}
-        onTabChange={(id) => setActiveTab(id as typeof activeTab)}
-        footer={({ requestClose }) => (
-          <>
-            <Button variant="ghost" onClick={requestClose}>{canMutateMenu ? 'Cancelar' : 'Cerrar'}</Button>
-            {canMutateMenu && (
-              <Button type="submit" form="menu-item-form" variant="primary" loading={saving} disabled={!formData.name || saving}>
-                {saving ? 'Guardando...' : editingItem ? 'Actualizar Plato' : 'Guardar en Catálogo'}
-              </Button>
+                  ))}
+                </dl>
+              </FormSection>
             )}
-          </>
-        )}
-      >
-        <form id="menu-item-form" onSubmit={handleSubmit} className={s.form}>
-          {activeTab === 'info' && (
-            <FormSection title="Información del plato">
-              <FormGrid>
-                <Field label="Nombre del plato" htmlFor="menu-item-name" required>
-                  <Input
-                    id="menu-item-name"
-                    autoFocus
-                    placeholder="Ej: Pasta Carbonara Premium"
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    required
-                    readOnly={!canMutateMenu}
-                    disabled={!canMutateMenu}
-                  />
-                </Field>
-                <Field label="Precio final" htmlFor="menu-item-price" required>
-                  <Input
-                    id="menu-item-price"
-                    type="number"
-                    step="0.01"
-                    prefix={symbol}
-                    placeholder="0.00"
-                    value={formData.price}
-                    onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-                    required
-                    readOnly={!canMutateMenu}
-                    disabled={!canMutateMenu}
-                  />
-                </Field>
-                <Checkbox
-                  label="Activo (visible en POS y menú)"
-                  checked={formData.active}
-                  onChange={(e) => setFormData({ ...formData, active: e.target.checked })}
-                  disabled={!canMutateMenu}
-                />
-                <Field label="Categoría" htmlFor="menu-item-category">
-                  <AppSelect<string>
-                    inputId="menu-item-category"
-                    options={categories.filter(cat => isCategoryVisibleInMenu(cat) || cat.id.toString() === formData.categoryId).map(cat => ({ value: cat.id.toString(), label: cat.name }))}
-                    value={formData.categoryId || null}
-                    onChange={(v) => setFormData({ ...formData, categoryId: v ?? '' })}
-                    placeholder="Seleccionar..."
-                    isDisabled={!canMutateMenu}
-                  />
-                </Field>
-                <Field label="Sucursal" htmlFor="menu-item-branch">
-                  <AppSelect<string>
-                    inputId="menu-item-branch"
-                    options={[
-                      { value: '', label: 'Todas las Sucursales (Global)' },
-                      ...branches.map((b) => ({ value: b.id.toString(), label: b.name })),
-                    ]}
-                    value={formData.branchId}
-                    onChange={(v) => setFormData({ ...formData, branchId: v ?? '' })}
-                    isClearable={false}
-                    isDisabled={!canMutateMenu}
-                  />
-                </Field>
-                <Field label="Marca" htmlFor="menu-item-brand">
-                  <AppSelect<string>
-                    inputId="menu-item-brand"
-                    options={[
-                      { value: '', label: 'Común (todas las marcas)' },
-                      ...brands.filter(b => b.active || b.id.toString() === formData.brandId).map((b) => ({ value: b.id.toString(), label: b.name })),
-                    ]}
-                    value={formData.brandId}
-                    onChange={(v) => setFormData({ ...formData, brandId: v ?? '' })}
-                    isClearable={false}
-                    isDisabled={!canMutateMenu}
-                  />
-                </Field>
-              </FormGrid>
-              <Field label="Descripción" htmlFor="menu-item-description">
-                <Textarea
-                  id="menu-item-description"
-                  rows={4}
-                  placeholder="Detalles sobre sabores, ingredientes o preparación..."
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+
+            {Boolean(viewingItem.images?.length) && (
+              <FormSection title="Galería">
+                <div className={s.gallery}>
+                  {viewingItem.images?.map((image, index) => (
+                    <button key={image.id} type="button" className={s.galleryButton} onClick={() => handleImageClick(viewingItem, index)} aria-label={`Abrir imagen ${index + 1} de ${viewingItem.name}`}>
+                      <img src={image.imageUrl} alt={`${viewingItem.name} ${index + 1}`} />
+                    </button>
+                  ))}
+                </div>
+              </FormSection>
+            )}
+
+            <FormSection title="Descripción">
+              <p className={s.description}>{viewingItem.description || 'Este plato no tiene descripción adicional.'}</p>
+            </FormSection>
+          </div>
+        );
+      })()}
+    </FullScreenModal>
+
+    <FullScreenModal
+      isOpen={isSidebarOpen}
+      onClose={() => { setIsSidebarOpen(false); setActiveTab('info'); }}
+      title={editingItem ? 'Editar Plato' : 'Nuevo Plato'}
+      subtitle={editingItem?.name}
+      aside={(() => {
+        const price = parseFloat(formData.price) || 0;
+        const unconfigured = recipe.filter((ing) => !ing.unitConfigured).length;
+        const totalCost = recipe.reduce((sum, ing) => sum + calculateIngredientLineCost(ing), 0);
+        const hasCost = recipe.length > 0 && unconfigured < recipe.length;
+        const profit = price - totalCost;
+        const margin = price > 0 ? (profit / price) * 100 : 0;
+        const foodCost = price > 0 ? (totalCost / price) * 100 : 0;
+        const known = hasCost && price > 0;
+        return (
+          <section className={s.costPanel} aria-label="Costeo del plato">
+            <h3>Costeo</h3>
+            <div className={s.costRow}><span>Precio de venta</span><strong>{price > 0 ? formatMoney(price) : 'N/D'}</strong></div>
+            <div className={s.costRow}><span>Costo de materia prima</span><strong>{hasCost ? formatMoney(totalCost) : 'N/D'}</strong></div>
+            <div className={s.costRow}><span>Utilidad por plato</span><strong>{known ? formatMoney(profit) : 'N/D'}</strong></div>
+            <div className={s.costRow}>
+              <span>Costo de alimentos</span>
+              <strong>
+                {known ? formatPercent(foodCost, 1) : 'N/D'}
+                {known && goals.foodCostPct > 0 && (
+                  <Badge tone={foodCost <= goals.foodCostPct ? 'success' : 'danger'}>meta ≤ {formatPercent(goals.foodCostPct, 0)}</Badge>
+                )}
+              </strong>
+            </div>
+            <div className={s.costRow}>
+              <span>Margen</span>
+              <strong>
+                {known ? formatPercent(margin, 1) : 'N/D'}
+                {known && goals.grossMarginPct > 0 && (
+                  <Badge tone={margin >= goals.grossMarginPct ? 'success' : 'warning'}>meta ≥ {formatPercent(goals.grossMarginPct, 0)}</Badge>
+                )}
+              </strong>
+            </div>
+            <p className={s.costNote}>
+              {hasCost
+                ? `Suma de ${recipe.length - unconfigured} ingredientes.${unconfigured > 0 ? ` Excluye ${unconfigured} con unidad no configurada.` : ''}`
+                : 'Agrega ingredientes con unidad configurada en la pestaña Costos para calcular el costo.'}
+              {goals.foodCostPct > 0 || goals.grossMarginPct > 0 ? ' Metas desde Configuración.' : ''}
+            </p>
+          </section>
+        );
+      })()}
+      tabs={[
+        { id: 'info', label: 'Información' },
+        { id: 'recipe', label: 'Costos' },
+        { id: 'gallery', label: 'Galería' },
+        ...(editingItem ? [{ id: 'pricing', label: 'Precios' }] : []),
+      ]}
+      activeTab={activeTab}
+      onTabChange={(id) => setActiveTab(id as typeof activeTab)}
+      footer={({ requestClose }) => (
+        <>
+          <Button onClick={requestClose}>{canMutateMenu ? 'Cancelar' : 'Cerrar'}</Button>
+          {canMutateMenu && (
+            <Button type="submit" form="menu-item-form" variant="primary" loading={saving} disabled={!formData.name || saving}>
+              {saving ? 'Guardando...' : editingItem ? 'Actualizar Plato' : 'Guardar en Catálogo'}
+            </Button>
+          )}
+        </>
+      )}
+    >
+      <form id="menu-item-form" onSubmit={handleSubmit} className={s.form}>
+        {activeTab === 'info' && (
+          <FormSection title="Información del plato">
+            <FormGrid>
+              <Field label="Nombre del plato" htmlFor="menu-item-name" required>
+                <Input
+                  id="menu-item-name"
+                  autoFocus
+                  placeholder="Ej: Pasta Carbonara Premium"
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  required
                   readOnly={!canMutateMenu}
                   disabled={!canMutateMenu}
                 />
               </Field>
-            </FormSection>
-          )}
-
-          {activeTab === 'recipe' && (() => {
-            return (
-              <FormSection title="Análisis de costos y receta">
-                <Field label="Incorporar ingrediente" htmlFor="menu-ingredient-product">
-                  <div className={s.addRow} role="group" aria-label="Incorporar ingrediente">
-                    <div className={s.addProduct}>
-                      <AppSelect<string>
-                        inputId="menu-ingredient-product"
-                        options={products.map(p => ({ value: p.id.toString(), label: p.name }))}
-                        value={selectedProductId || null}
-                        onChange={(v) => void handleIngredientProductChange(v ?? '')}
-                        placeholder="Buscar..."
-                        isDisabled={!canMutateMenu}
-                      />
-                    </div>
-                    <div className={s.addQty}>
-                      <Input
-                        id="menu-ingredient-quantity"
-                        type="number"
-                        min="0.001"
-                        step="0.001"
-                        aria-label="Cantidad del ingrediente"
-                        placeholder="Cant"
-                        value={quantity}
-                        onChange={(e) => setQuantity(e.target.value)}
-                        readOnly={!canMutateMenu}
-                        disabled={!canMutateMenu}
-                      />
-                    </div>
-                    {selectedProductId && (
-                      <div className={s.addUnit}>
-                        <AppSelect<string>
-                          inputId="menu-ingredient-unit"
-                          aria-label="Unidad del ingrediente"
-                          options={ingredientUnits.map((u) => ({
-                            value: u.abbreviation,
-                            label: u.name && u.name !== u.abbreviation ? `${u.name} (${u.abbreviation})` : u.abbreviation,
-                          }))}
-                          value={selectedIngredientUnit || null}
-                          onChange={(v) => setSelectedIngredientUnit(v ?? '')}
-                          isDisabled={!canMutateMenu || ingredientUnits.length === 0}
-                          placeholder="Unidad"
-                        />
-                      </div>
-                    )}
-                    <Button
-                      variant="primary"
-                      icon={Plus}
-                      aria-label="Agregar ingrediente"
-                      onClick={addIngredient}
-                      disabled={!canMutateMenu || !selectedProductId || !quantity || Number(quantity) <= 0}
-                    >
-                      Agregar
-                    </Button>
-                  </div>
-                </Field>
-
-                <div role="group" aria-labelledby="menu-ingredients-list-label">
-                  <p className={s.sectionLabel} id="menu-ingredients-list-label">Ingredientes seleccionados</p>
-                  <div id="menu-ingredients-list" className={s.ingredientList}>
-                    {recipe.length > 0 ? (
-                      recipe.map((ing, i) => {
-                        const allowedUnits = recipeUnitsByProduct[ing.productId] || [];
-                        const unitOptions: Opt<string>[] = allowedUnits.map((unit) => ({
-                          value: unit.abbreviation,
-                          label: unit.name && unit.name !== unit.abbreviation ? `${unit.name} (${unit.abbreviation})` : unit.abbreviation,
-                        }));
-                        const selectedUnit = unitOptions.find((option) => option.value.toLowerCase() === ing.unit.toLowerCase());
-                        if (!selectedUnit && ing.unit) unitOptions.push({ value: ing.unit, label: ing.unit });
-
-                        return (
-                          <div key={ing.id ?? `new-${ing.productId}`} className="recipe-ingredient-row">
-                            <div className="recipe-ingredient-name">
-                              <div>{ing.productName}</div>
-                              {!ing.unitConfigured && <span className="recipe-unit-error">Unidad no configurada</span>}
-                            </div>
-                            {canMutateMenu ? (
-                              <>
-                                <div className="recipe-ingredient-quantity">
-                                  <Input
-                                    type="number"
-                                    min="0.001"
-                                    step="0.001"
-                                    aria-label={`Cantidad de ${ing.productName}`}
-                                    value={ing.quantity}
-                                    onChange={(event) => updateIngredientQuantity(i, event.target.value)}
-                                  />
-                                </div>
-                                <div className="recipe-ingredient-unit">
-                                  <AppSelect<string>
-                                    aria-label={`Unidad de ${ing.productName}`}
-                                    options={unitOptions}
-                                    value={selectedUnit?.value ?? (ing.unit || null)}
-                                    onChange={(v) => updateIngredientUnit(i, v ?? '')}
-                                    isClearable={false}
-                                    isDisabled={unitOptions.length === 0}
-                                  />
-                                </div>
-                              </>
-                            ) : (
-                              <span className="recipe-ingredient-measure">{ing.quantity} {ing.unit}</span>
-                            )}
-                            <div className="recipe-ingredient-cost">
-                              {ing.unitConfigured ? formatMoney(calculateIngredientLineCost(ing)) : 'N/D'}
-                            </div>
-                            {canMutateMenu ? (
-                              <IconButton icon={Trash2} size="sm" label={`Quitar ${ing.productName}`} onClick={() => removeIngredient(i)} />
-                            ) : null}
-                          </div>
-                        );
-                      })
-                    ) : (
-                      <EmptyState title="Sin ingredientes registrados" />
-                    )}
-                  </div>
-                </div>
-              </FormSection>
-            );
-          })()}
-
-          {activeTab === 'gallery' && (
-            <FormSection title="Galería de imágenes" description="Hasta 3 imágenes; la primera es la principal.">
-              <div className={s.gallery}>
-                {images.map((img, i) => (
-                  <div key={i} className={s.galleryItem}>
-                    <img src={img} alt={`Imagen ${i + 1} del plato`} />
-                    {i === 0 && <span className={s.galleryMain}>Principal</span>}
-                    {canMutateMenu ? (
-                      <span className={s.galleryRemove}>
-                        <IconButton icon={Trash2} size="sm" label={`Quitar imagen ${i + 1}`} onClick={() => removeImage(i)} />
-                      </span>
-                    ) : null}
-                  </div>
-                ))}
-                {images.length < 3 && canMutateMenu && (
-                  <label className={s.galleryUpload}>
-                    <input
-                      type="file"
-                      accept=".png,.jpg,.jpeg,.gif,.webp"
-                      multiple
-                      onChange={handleImageUpload}
-                      className={s.srOnlyInput}
-                    />
-                    <ImagePlus size={24} aria-hidden="true" />
-                    <span>Cargar imagen</span>
-                  </label>
-                )}
-              </div>
-            </FormSection>
-          )}
-
-          {activeTab === 'pricing' && editingItem && (
-            <FormSection
-              title="Precios por sucursal"
-              description={formData.branchId
-                ? 'Este plato es exclusivo de una sucursal. Los precios de abajo permiten ajustes adicionales por local.'
-                : 'Este plato es global. Cada sucursal puede sobrescribir el precio base si lo necesita.'}
-            >
-              <div className={s.priceRows}>
-                <div className={s.priceRow}>
-                  <span>Precio base {formData.branchId ? '(sucursal propia)' : '(global)'}</span>
-                  <strong>{formatMoney(Number(formData.price || 0))}</strong>
-                </div>
-                {branches.map((branch) => {
-                  const existingPrice = branchPricing.find((priceRow) => priceRow.branchId === branch.id);
-                  return (
-                    <div key={branch.id} className={s.priceRow}>
-                      <div>
-                        <strong>{branch.name}</strong>
-                        <span className={s.cellSub}>
-                          {branch.code ? `${branch.code} · ` : ''}
-                          {existingPrice ? 'Override activo' : 'Usa precio base'}
-                        </span>
-                      </div>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        prefix={symbol}
-                        aria-label={`Precio en ${branch.name}`}
-                        value={branchPriceDrafts[branch.id] ?? amountDraft(existingPrice ? existingPrice.price : formData.price || 0)}
-                        onChange={(e) => setBranchPriceDrafts((prev) => ({ ...prev, [branch.id]: e.target.value }))}
-                        readOnly={!canSetBranchPrices}
-                        disabled={!canSetBranchPrices}
-                      />
-                      <Button
-                        onClick={() => handleSaveBranchPrice(branch.id)}
-                        disabled={!canSetBranchPrices || savingBranchPriceId === branch.id}
-                      >
-                        {savingBranchPriceId === branch.id ? 'Guardando...' : 'Guardar'}
-                      </Button>
-                    </div>
-                  );
-                })}
-              </div>
-            </FormSection>
-          )}
-        </form>
-      </FullScreenModal>
-
-      <FullScreenModal
-        isOpen={isModifierModalOpen}
-        onClose={() => { setIsModifierModalOpen(false); resetModifierForm(); }}
-        title="Modificadores"
-        subtitle="Grupos, precios extra y consumo de inventario"
-        footer={({ requestClose }) => <Button variant="ghost" onClick={requestClose}>Cerrar</Button>}
-      >
-        <div className={s.form}>
-          <FormSection title="Grupos de modificadores">
-            <div className="modifier-group-chips">
-              {modifierGroups.map((group) => (
-                <button
-                  key={group.id}
-                  type="button"
-                  className={`modifier-group-chip ${selectedGroupId === group.id ? 'active' : ''}`}
-                  aria-pressed={selectedGroupId === group.id}
-                  onClick={() => { setSelectedGroupId(group.id); resetModifierForm(); }}
-                >
-                  {group.name}
-                  <span className="modifier-group-chip-count">{group.modifiers.length}</span>
-                </button>
-              ))}
-              {modifierGroups.length === 0 && (
-                <span className="modifier-empty-hint">Aún no hay grupos. Crea uno para empezar.</span>
-              )}
-            </div>
-
-            <div className={s.addRow}>
-              <div className={s.addProduct}>
+              <Field label="Precio final" htmlFor="menu-item-price" required>
                 <Input
-                  aria-label="Nuevo grupo"
-                  placeholder="Nuevo grupo (ej: Extras, Tamaño)"
-                  value={newGroupName}
-                  onChange={(e) => setNewGroupName(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleCreateGroup(); } }}
+                  id="menu-item-price"
+                  type="number"
+                  step="0.01"
+                  prefix={symbol}
+                  placeholder="0.00"
+                  value={formData.price}
+                  onChange={(e) => setFormData({ ...formData, price: e.target.value })}
+                  required
+                  readOnly={!canMutateMenu}
+                  disabled={!canMutateMenu}
+                />
+              </Field>
+              <Checkbox
+                label="Activo (visible en POS y menú)"
+                checked={formData.active}
+                onChange={(e) => setFormData({ ...formData, active: e.target.checked })}
+                disabled={!canMutateMenu}
+              />
+              <Field label="Categoría" htmlFor="menu-item-category">
+                <AppSelect<string>
+                  inputId="menu-item-category"
+                  options={categories.filter(cat => isCategoryVisibleInMenu(cat) || cat.id.toString() === formData.categoryId).map(cat => ({ value: cat.id.toString(), label: cat.name }))}
+                  value={formData.categoryId || null}
+                  onChange={(v) => setFormData({ ...formData, categoryId: v ?? '' })}
+                  placeholder="Seleccionar..."
+                  isDisabled={!canMutateMenu}
+                />
+              </Field>
+              <Field label="Sucursal" htmlFor="menu-item-branch">
+                <AppSelect<string>
+                  inputId="menu-item-branch"
+                  options={[
+                    { value: '', label: 'Todas las Sucursales (Global)' },
+                    ...branches.map((b) => ({ value: b.id.toString(), label: b.name })),
+                  ]}
+                  value={formData.branchId}
+                  onChange={(v) => setFormData({ ...formData, branchId: v ?? '' })}
+                  isClearable={false}
+                  isDisabled={!canMutateMenu}
+                />
+              </Field>
+              <Field label="Marca" htmlFor="menu-item-brand">
+                <AppSelect<string>
+                  inputId="menu-item-brand"
+                  options={[
+                    { value: '', label: 'Común (todas las marcas)' },
+                    ...brands.filter(b => b.active || b.id.toString() === formData.brandId).map((b) => ({ value: b.id.toString(), label: b.name })),
+                  ]}
+                  value={formData.brandId}
+                  onChange={(v) => setFormData({ ...formData, brandId: v ?? '' })}
+                  isClearable={false}
+                  isDisabled={!canMutateMenu}
+                />
+              </Field>
+            </FormGrid>
+            <Field label="Descripción" htmlFor="menu-item-description">
+              <Textarea
+                id="menu-item-description"
+                rows={4}
+                placeholder="Detalles sobre sabores, ingredientes o preparación..."
+                value={formData.description}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                readOnly={!canMutateMenu}
+                disabled={!canMutateMenu}
+              />
+            </Field>
+          </FormSection>
+        )}
+
+        {activeTab === 'recipe' && (() => {
+          return (
+            <FormSection title="Análisis de costos y receta">
+              <Field label="Incorporar ingrediente" htmlFor="menu-ingredient-product">
+                <div className={s.addRow} role="group" aria-label="Incorporar ingrediente">
+                  <div className={s.addProduct}>
+                    <AppSelect<string>
+                      inputId="menu-ingredient-product"
+                      options={products.map(p => ({ value: p.id.toString(), label: p.name }))}
+                      value={selectedProductId || null}
+                      onChange={(v) => void handleIngredientProductChange(v ?? '')}
+                      placeholder="Buscar..."
+                      isDisabled={!canMutateMenu}
+                    />
+                  </div>
+                  <div className={s.addQty}>
+                    <Input
+                      id="menu-ingredient-quantity"
+                      type="number"
+                      min="0.001"
+                      step="0.001"
+                      aria-label="Cantidad del ingrediente"
+                      placeholder="Cant"
+                      value={quantity}
+                      onChange={(e) => setQuantity(e.target.value)}
+                      readOnly={!canMutateMenu}
+                      disabled={!canMutateMenu}
+                    />
+                  </div>
+                  {selectedProductId && (
+                    <div className={s.addUnit}>
+                      <AppSelect<string>
+                        inputId="menu-ingredient-unit"
+                        aria-label="Unidad del ingrediente"
+                        options={ingredientUnits.map((u) => ({
+                          value: u.abbreviation,
+                          label: u.name && u.name !== u.abbreviation ? `${u.name} (${u.abbreviation})` : u.abbreviation,
+                        }))}
+                        value={selectedIngredientUnit || null}
+                        onChange={(v) => setSelectedIngredientUnit(v ?? '')}
+                        isDisabled={!canMutateMenu || ingredientUnits.length === 0}
+                        placeholder="Unidad"
+                      />
+                    </div>
+                  )}
+                  <Button
+                    variant="primary"
+                    icon={Plus}
+                    aria-label="Agregar ingrediente"
+                    onClick={addIngredient}
+                    disabled={!canMutateMenu || !selectedProductId || !quantity || Number(quantity) <= 0}
+                  >
+                    Agregar
+                  </Button>
+                </div>
+              </Field>
+
+              <div role="group" aria-labelledby="menu-ingredients-list-label">
+                <p className={s.sectionLabel} id="menu-ingredients-list-label">Ingredientes seleccionados</p>
+                <DataTable<RecipeRow>
+                  ariaLabel="Ingredientes de la receta"
+                  variant="flat"
+                  columns={recipeColumns}
+                  rows={recipe.map((ing, index) => ({ ing, index }))}
+                  rowKey={(row) => row.ing.id ?? `new-${row.ing.productId}`}
+                  empty="Sin ingredientes registrados"
+                  hidePaginationIfSinglePage
+                  defaultPageSize={100}
+                  stackOnMobile
                 />
               </div>
-              <Button icon={Plus} onClick={handleCreateGroup} disabled={!newGroupName.trim()}>Grupo</Button>
+            </FormSection>
+          );
+        })()}
+
+        {activeTab === 'gallery' && (
+          <FormSection title="Galería de imágenes" description="Hasta 3 imágenes; la primera es la principal.">
+            <div className={s.gallery}>
+              {images.map((img, i) => (
+                <div key={i} className={s.galleryItem}>
+                  <img src={img} alt={`Imagen ${i + 1} del plato`} />
+                  {i === 0 && <span className={s.galleryMain}>Principal</span>}
+                  {canMutateMenu ? (
+                    <span className={s.galleryRemove}>
+                      <IconButton icon={Trash2} size="sm" tone="danger" tooltip="Quitar" label={`Quitar imagen ${i + 1}`} onClick={() => removeImage(i)} />
+                    </span>
+                  ) : null}
+                </div>
+              ))}
+              {images.length < 3 && canMutateMenu && (
+                <label className={s.galleryUpload}>
+                  <input
+                    type="file"
+                    accept=".png,.jpg,.jpeg,.gif,.webp"
+                    multiple
+                    onChange={handleImageUpload}
+                    className={s.srOnlyInput}
+                  />
+                  <ImagePlus size={24} aria-hidden="true" />
+                  <span>Cargar imagen</span>
+                </label>
+              )}
             </div>
           </FormSection>
+        )}
 
-          {selectedGroupId && (
-            <FormSection title="Modificadores del grupo">
-              <div className="modifier-list">
-                {(modifierGroups.find((g) => g.id === selectedGroupId)?.modifiers || []).map((modifier) => (
-                  <div key={modifier.id} className="modifier-list-row">
-                    <div className="modifier-list-main">
-                      <span className="modifier-list-name">{modifier.name}</span>
-                      {Number(modifier.price) > 0 ? (
-                        <span className="modifier-list-price">+{formatMoney(Number(modifier.price))}</span>
-                      ) : (
-                        <span className="modifier-list-price">Sin costo</span>
-                      )}
-                    </div>
-                    <div className="modifier-list-link">
-                      {modifier.productId && modifier.inventoryEffect === 'REMOVE' ? (
-                        <span className="modifier-link-tag">
-                          <Package size={13} />
-                          {modifier.consumeQuantity != null
-                            ? `Quita ${formatNumber(modifier.consumeQuantity, 3)} ${modifier.unit?.abbreviation || ''} de ${modifier.product?.name || 'producto'} de la receta`
-                            : `Quita ${modifier.product?.name || 'el ingrediente'} de la receta`}
-                        </span>
-                      ) : modifier.productId ? (
-                        <span className="modifier-link-tag">
-                          <Package size={13} />
-                          Consume {formatNumber(modifier.consumeQuantity ?? 0, 3)} {modifier.unit?.abbreviation || ''} de {modifier.product?.name || 'producto'}
-                        </span>
-                      ) : (
-                        <span className="modifier-link-tag muted">Sin consumo de inventario</span>
-                      )}
-                    </div>
-                    <div className="modifier-list-actions">
-                      <IconButton icon={Edit2} size="sm" label={`Editar ${modifier.name}`} onClick={() => handleEditModifier(modifier)} />
-                      <IconButton icon={Trash2} size="sm" label={`Eliminar ${modifier.name}`} onClick={() => handleDeleteModifier(modifier)} />
-                    </div>
-                  </div>
-                ))}
-                {(modifierGroups.find((g) => g.id === selectedGroupId)?.modifiers.length ?? 0) === 0 && (
-                  <span className="modifier-empty-hint">Este grupo no tiene modificadores.</span>
-                )}
+        {activeTab === 'pricing' && editingItem && (
+          <FormSection
+            title="Precios por sucursal"
+            description={formData.branchId
+              ? 'Este plato es exclusivo de una sucursal. Los precios de abajo permiten ajustes adicionales por local.'
+              : 'Este plato es global. Cada sucursal puede sobrescribir el precio base si lo necesita.'}
+          >
+            <dl className={s.facts}>
+              <div>
+                <dt>Precio base {formData.branchId ? '(sucursal propia)' : '(global)'}</dt>
+                <dd>{formatMoney(Number(formData.price || 0))}</dd>
               </div>
+            </dl>
+            <DataTable<PriceRow>
+              ariaLabel="Precios por sucursal"
+              variant="flat"
+              columns={priceColumns}
+              rows={branches.map((branch) => ({ branch, existing: branchPricing.find((priceRow) => priceRow.branchId === branch.id) }))}
+              rowKey={(row) => row.branch.id}
+              empty="No hay sucursales registradas."
+              hidePaginationIfSinglePage
+              defaultPageSize={100}
+              stackOnMobile
+            />
+          </FormSection>
+        )}
+      </form>
+    </FullScreenModal>
 
-              <FormSection title={editingModifierId ? 'Editar modificador' : 'Nuevo modificador'}>
+    <FullScreenModal
+      isOpen={isModifierModalOpen}
+      onClose={() => { setIsModifierModalOpen(false); resetModifierForm(); }}
+      title="Modificadores"
+      subtitle="Grupos, precios extra y consumo de inventario"
+      footerStart={editingModifierId ? <Button onClick={resetModifierForm}>Cancelar edición</Button> : undefined}
+      footer={({ requestClose }) => (
+        <>
+          <Button onClick={requestClose}>Cerrar</Button>
+          {selectedGroupId && (
+            <Button
+              variant="primary"
+              type="submit"
+              form="modifier-form"
+              disabled={savingModifier || !modifierForm.name.trim()}
+              loading={savingModifier}
+            >
+              {savingModifier ? 'Guardando...' : editingModifierId ? 'Actualizar modificador' : 'Agregar modificador'}
+            </Button>
+          )}
+        </>
+      )}
+    >
+      <div className={s.form}>
+        <FormSection title="Grupos de modificadores">
+          {modifierGroups.length > 0 ? (
+            <Tabs
+              ariaLabel="Grupos de modificadores"
+              active={selectedGroupId != null ? String(selectedGroupId) : ''}
+              onChange={(id) => { setSelectedGroupId(Number(id)); resetModifierForm(); }}
+              tabs={modifierGroups.map((group) => ({ id: String(group.id), label: group.name, badge: group.modifiers.length }))}
+            />
+          ) : (
+            <EmptyState icon={SlidersHorizontal} title="Aún no hay grupos" description="Crea uno para empezar." />
+          )}
+
+          <div className={s.groupToolbar} role="group" aria-label="Agregar grupo de modificadores">
+            <div className={s.groupToolbarField}>
+              <Field label="Nuevo grupo" htmlFor="menu-new-modifier-group">
+                <Input
+                  id="menu-new-modifier-group"
+                  placeholder="Ej: Extras, Tamaño"
+                  value={newGroupName}
+                  onChange={(e) => setNewGroupName(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void handleCreateGroup(); } }}
+                />
+              </Field>
+            </div>
+            <Button icon={Plus} onClick={() => void handleCreateGroup()} disabled={!newGroupName.trim()}>Agregar grupo</Button>
+          </div>
+        </FormSection>
+
+        {selectedGroupId && (
+          <>
+            <FormSection title="Modificadores del grupo">
+              <DataTable<ModifierRow>
+                ariaLabel="Modificadores del grupo"
+                variant="flat"
+                columns={modifierColumns}
+                rows={modifierGroups.find((g) => g.id === selectedGroupId)?.modifiers ?? []}
+                rowKey={(modifier) => modifier.id}
+                empty="Este grupo no tiene modificadores."
+                hidePaginationIfSinglePage
+                stackOnMobile
+              />
+            </FormSection>
+
+            <FormSection title={editingModifierId ? 'Editar modificador' : 'Nuevo modificador'}>
+              <form id="modifier-form" onSubmit={(e) => { e.preventDefault(); void handleSaveModifier(); }}>
                 <FormGrid>
                   <Field label="Nombre" htmlFor="modifier-name">
                     <Input
@@ -1829,18 +1893,12 @@ export default function Menu() {
                     />
                   </Field>
                 </FormGrid>
-                <div className={s.formActions}>
-                  {editingModifierId && <Button variant="ghost" onClick={resetModifierForm}>Cancelar edición</Button>}
-                  <Button variant="primary" onClick={handleSaveModifier} disabled={savingModifier || !modifierForm.name.trim()} loading={savingModifier}>
-                    {savingModifier ? 'Guardando...' : editingModifierId ? 'Actualizar' : 'Agregar modificador'}
-                  </Button>
-                </div>
-              </FormSection>
+              </form>
             </FormSection>
-          )}
-        </div>
-      </FullScreenModal>
+          </>
+        )}
       </div>
+    </FullScreenModal>
     </PageContent>
   );
 }

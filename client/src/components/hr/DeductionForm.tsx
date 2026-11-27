@@ -1,6 +1,6 @@
-import { AppSelect, Button, Checkbox, DateInput, Input, Textarea } from '@/ui';
+import { AppSelect, Button, Checkbox, DateInput, Field, Input, Textarea } from '@/ui';
 import HrMoneyInput from './HrMoneyInput';
-import { useState } from 'react';
+import { useState, useId } from 'react';
 import { AlertTriangle, BadgeMinus } from 'lucide-react';
 import HrModalFormShell from './HrModalFormShell';
 import type { HrUserSummary } from '../../types/hr';
@@ -23,6 +23,7 @@ export default function DeductionForm({
   onSubmit,
   onCancel,
 }: DeductionFormProps) {
+  const fid = useId();
   const [form, setForm] = useState<HrDeductionPayload>({
     userId: 0,
     name: '',
@@ -60,8 +61,8 @@ export default function DeductionForm({
           <Button type="button" variant="ghost" onClick={onCancel} disabled={saving}>
             Cancelar
           </Button>
-          <Button variant="primary" type="submit" disabled={!online || saving || !confirmed || !form.userId}>
-            {saving ? 'Guardando…' : 'Crear deducción'}
+          <Button loading={saving} variant="primary" type="submit" disabled={!online || saving || !confirmed || !form.userId}>
+            Crear deducción
           </Button>
         </>
       }
@@ -73,9 +74,8 @@ export default function DeductionForm({
           aplicable, remanente y límites legales.
         </span>
       </div>
-      <label>
-        Persona
-        <AppSelect<string>
+      <Field label="Persona" htmlFor={`${fid}-persona`}>
+        <AppSelect<string> inputId={`${fid}-persona`}
           options={[
             { value: '', label: 'Selecciona una persona' },
             ...users.map((user) => ({
@@ -89,19 +89,17 @@ export default function DeductionForm({
           }
           isClearable={false}
         />
-      </label>
-      <label>
-        Nombre
-        <Input
+      </Field>
+      <Field label="Nombre" htmlFor={`${fid}-nombre`}>
+        <Input id={`${fid}-nombre`}
           value={form.name}
           onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
           maxLength={120}
           required
         />
-      </label>
-      <label>
-        Frecuencia
-        <AppSelect<string>
+      </Field>
+      <Field label="Frecuencia" htmlFor={`${fid}-frecuencia`}>
+        <AppSelect<string> inputId={`${fid}-frecuencia`}
           options={[
             { value: 'ONCE', label: 'Única' },
             { value: 'RECURRING', label: 'Recurrente' },
@@ -115,10 +113,9 @@ export default function DeductionForm({
           }
           isClearable={false}
         />
-      </label>
-      <label>
-        Moneda
-        <AppSelect<string>
+      </Field>
+      <Field label="Moneda" htmlFor={`${fid}-moneda`}>
+        <AppSelect<string> inputId={`${fid}-moneda`}
           options={[
             { value: 'NIO', label: 'NIO — Córdoba' },
             { value: 'USD', label: 'USD — Dólar' },
@@ -127,29 +124,26 @@ export default function DeductionForm({
           onChange={(next) => setForm((current) => ({ ...current, currency: next ?? '' }))}
           isClearable={false}
         />
-      </label>
-      <label>
-        Monto solicitado
-        <HrMoneyInput
+      </Field>
+      <Field label="Monto solicitado" htmlFor={`${fid}-monto-solicitado`}>
+        <HrMoneyInput id={`${fid}-monto-solicitado`}
           value={form.requestedAmount}
           onValueChange={(requestedAmount) =>
             setForm((current) => ({ ...current, requestedAmount }))
           }
           required
         />
-      </label>
-      <label>
-        Límite por periodo
-        <HrMoneyInput
+      </Field>
+      <Field label="Límite por periodo" htmlFor={`${fid}-limite-por-periodo`}>
+        <HrMoneyInput id={`${fid}-limite-por-periodo`}
           value={form.perPeriodLimit ?? ''}
           onValueChange={(perPeriodLimit) =>
             setForm((current) => ({ ...current, perPeriodLimit: perPeriodLimit || undefined }))
           }
         />
-      </label>
-      <label>
-        Prioridad
-        <Input
+      </Field>
+      <Field label="Prioridad" htmlFor={`${fid}-prioridad`} hint="Menor número se procesa primero; los límites del servidor prevalecen.">
+        <Input id={`${fid}-prioridad`}
           type="number"
           min="1"
           max="9999"
@@ -159,11 +153,9 @@ export default function DeductionForm({
           }
           required
         />
-        <small>Menor número se procesa primero; los límites del servidor prevalecen.</small>
-      </label>
-      <label>
-        Vigente desde
-        <DateInput
+      </Field>
+      <Field label="Vigente desde" htmlFor={`${fid}-vigente-desde`}>
+        <DateInput id={`${fid}-vigente-desde`}
          
           value={form.effectiveFrom}
           onChange={(event) =>
@@ -171,10 +163,9 @@ export default function DeductionForm({
           }
           required
         />
-      </label>
-      <label>
-        Vigente hasta
-        <DateInput
+      </Field>
+      <Field label="Vigente hasta" htmlFor={`${fid}-vigente-hasta`}>
+        <DateInput id={`${fid}-vigente-hasta`}
          
           min={form.effectiveFrom}
           value={form.effectiveTo ?? ''}
@@ -182,17 +173,18 @@ export default function DeductionForm({
             setForm((current) => ({ ...current, effectiveTo: event.target.value }))
           }
         />
-      </label>
-      <label className="span-full">
-        Justificación
-        <Textarea
-          rows={4}
-          value={form.reason}
-          onChange={(event) => setForm((current) => ({ ...current, reason: event.target.value }))}
-          maxLength={900}
-          required
-        />
-      </label>
+      </Field>
+      <div className="span-full">
+        <Field label="Justificación" htmlFor={`${fid}-justificacion`}>
+          <Textarea id={`${fid}-justificacion`}
+            rows={4}
+            value={form.reason}
+            onChange={(event) => setForm((current) => ({ ...current, reason: event.target.value }))}
+            maxLength={900}
+            required
+          />
+        </Field>
+      </div>
       <Checkbox className="span-full" checked={confirmed}
           onChange={(event) => setConfirmed(event.target.checked)} label={<><span>
           Confirmo la persona, vigencia, prioridad, límite y motivo. Se creará como borrador.

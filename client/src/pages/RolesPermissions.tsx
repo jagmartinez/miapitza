@@ -6,10 +6,13 @@ import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
 import { hasAnyRole } from '../utils/authz';
 import { rolesAPI, permissionsAPI } from '../services/api';
-import { Plus, Edit, Trash2 } from 'lucide-react';
+import { Plus, Pencil, Trash2, Search, ShieldCheck } from 'lucide-react';
 import { describePermission } from '../utils/permissionCatalog';
 import styles from './RolesPermissions.module.css';
-import { Button, Checkbox, DataTable, Field, FormSection, FullScreenModal, Input, PageHeader, Textarea, type Column } from '@/ui';
+import {
+    Badge, Button, Checkbox, DataTable, EmptyState, Field, FormSection, FullScreenModal, IconButton, Input, LoadErrorState,
+    PageContent, PageHeader, TableToolbar, Textarea, type Column,
+} from '@/ui';
 
 interface PermissionRow {
     id: number;
@@ -34,6 +37,10 @@ export default function RolesPermissions() {
     const [roles, setRoles] = useState<RoleRow[]>([]);
     const [permissions, setPermissions] = useState<PermissionRow[]>([]);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
+    const [saving, setSaving] = useState(false);
+    const [search, setSearch] = useState('');
+    const [permSearch, setPermSearch] = useState('');
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [editingRole, setEditingRole] = useState<RoleRow | null>(null);
     const [formData, setFormData] = useState({
@@ -46,6 +53,7 @@ export default function RolesPermissions() {
 
     const loadData = async () => {
         try {
+            setLoadError(null);
             const [rolesRes, permissionsRes] = await Promise.all([
                 rolesAPI.getAll(),
                 permissionsAPI.getAll()
@@ -54,6 +62,7 @@ export default function RolesPermissions() {
             setPermissions(permissionsRes.data.data);
         } catch (error) {
             notifyError(error, 'No se pudieron cargar los roles y permisos');
+            setLoadError(getApiErrorMessage(error, 'No se pudieron cargar los roles y permisos'));
         } finally {
             setLoading(false);
         }
@@ -71,11 +80,13 @@ export default function RolesPermissions() {
             setEditingRole(null);
             setFormData({ name: '', description: '', permissionIds: [] });
         }
+        setPermSearch('');
         setIsSidebarOpen(true);
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        setSaving(true);
         try {
             if (editingRole) {
                 await rolesAPI.update(editingRole.id, formData);
@@ -87,6 +98,8 @@ export default function RolesPermissions() {
         } catch (error) {
             console.error('Error saving role:', error);
             showError(getApiErrorMessage(error, 'Error al guardar el rol'));
+        } finally {
+            setSaving(false);
         }
     };
 
@@ -116,16 +129,22 @@ export default function RolesPermissions() {
         }));
     };
 
-    if (loading) return <div style={{ padding: 40, textAlign: 'center', color: 'var(--ui-text-muted)' }}>Cargando...</div>;
+    const q = search.trim().toLowerCase();
+    const filteredRoles = roles.filter((role) => !q || role.name.toLowerCase().includes(q) || (role.description ?? '').toLowerCase().includes(q));
+    const pq = permSearch.trim().toLowerCase();
+    const filteredPermissions = permissions.filter((perm) => {
+        if (!pq) return true;
+        return perm.name.toLowerCase().includes(pq) || describePermission(perm.name, perm.description).label.toLowerCase().includes(pq);
+    });
 
     const columns: Column<RoleRow>[] = [
         {
             key: 'name',
             header: 'Rol',
             render: (role) => (
-                <div>
+                <div className={styles.roleCell}>
                     <strong>{role.name}</strong>
-                    <div className={styles.muted}>{role.description || 'Sin descripción'}</div>
+                    <span className={styles.muted}>{role.description || 'Sin descripción'}</span>
                 </div>
             ),
         },
@@ -140,9 +159,9 @@ export default function RolesPermissions() {
                 return (
                     <div className={styles.badges}>
                         {list.slice(0, 3).map((perm) => (
-                            <span key={perm.id} className={styles.badge} title={perm.name}>{describePermission(perm.name, perm.description).label}</span>
+                            <span key={perm.id} title={perm.name}><Badge>{describePermission(perm.name, perm.description).label}</Badge></span>
                         ))}
-                        {list.length > 3 && <span className={styles.badge}>+{list.length - 3} más</span>}
+                        {list.length > 3 && <Badge>+{list.length - 3} más</Badge>}
                     </div>
                 );
             },
@@ -151,15 +170,12 @@ export default function RolesPermissions() {
             key: 'actions',
             header: 'Acciones',
             type: 'actions',
+            width: '100px',
             render: (role) => (
                 <div className={styles.actions}>
-                    <Button variant="ghost" onClick={() => handleOpenSidebar(role)} aria-label={`Editar ${role.name}`}>
-                        <Edit size={15} /> Editar
-                    </Button>
+                    <IconButton size="sm" icon={Pencil} tooltip="Editar" onClick={() => handleOpenSidebar(role)} label={`Editar ${role.name}`} />
                     {isSuperAdmin && (
-                        <Button variant="ghost" onClick={() => handleDelete(role.id)} aria-label={`Eliminar ${role.name}`}>
-                            <Trash2 size={15} /> Eliminar
-                        </Button>
+                        <IconButton size="sm" icon={Trash2} tone="danger" tooltip="Eliminar" onClick={() => handleDelete(role.id)} label={`Eliminar ${role.name}`} />
                     )}
                 </div>
             ),
@@ -167,31 +183,58 @@ export default function RolesPermissions() {
     ];
 
     return (
-        <div>
+        <PageContent>
             <PageHeader
                 title="Roles y Permisos"
                 description="Gestiona los roles del sistema y sus capacidades"
                 actions={(
-                    <Button variant="primary" onClick={() => handleOpenSidebar()}>
-                        <Plus size={18} /> Nuevo Rol
+                    <Button variant="primary" icon={Plus} onClick={() => handleOpenSidebar()} disabled={Boolean(loadError)}>
+                        Nuevo rol
                     </Button>
                 )}
             />
 
-            <DataTable<RoleRow>
-                columns={columns}
-                rows={roles}
-                rowKey={(role) => role.id}
-                ariaLabel="Listado de roles"
-                pagination={{ mode: 'client' }}
-            />
+            {loadError ? (
+                <LoadErrorState message={loadError} onRetry={() => { setLoading(true); void loadData(); }} />
+            ) : (
+                <DataTable<RoleRow>
+                    columns={columns}
+                    rows={filteredRoles}
+                    rowKey={(role) => role.id}
+                    ariaLabel="Listado de roles"
+                    loading={loading}
+                    resetKey={q}
+                    onRowClick={handleOpenSidebar}
+                    empty={<EmptyState icon={ShieldCheck} title="No se encontraron roles" description="Ajusta la búsqueda o crea un nuevo rol." />}
+                    toolbar={(
+                        <TableToolbar>
+                            <Input
+                                type="search"
+                                aria-label="Buscar roles"
+                                placeholder="Buscar por nombre o descripción"
+                                prefix={<Search size={14} aria-hidden="true" />}
+                                value={search}
+                                onChange={(e) => setSearch(e.target.value)}
+                            />
+                        </TableToolbar>
+                    )}
+                />
+            )}
 
             <FullScreenModal
                 isOpen={isSidebarOpen}
                 onClose={() => setIsSidebarOpen(false)}
-                title={editingRole ? 'Editar Rol' : 'Nuevo Rol'}
+                title={editingRole ? 'Editar rol' : 'Nuevo rol'}
+                footer={({ requestClose }) => (
+                    <>
+                        <Button onClick={requestClose}>Cancelar</Button>
+                        <Button variant="primary" type="submit" form="role-form" loading={saving}>
+                            {editingRole ? 'Guardar cambios' : 'Crear rol'}
+                        </Button>
+                    </>
+                )}
             >
-                <form onSubmit={handleSubmit}>
+                <form id="role-form" onSubmit={handleSubmit} className={styles.stack}>
                     <FormSection title="Datos del rol">
                         <Field label="Nombre del rol" htmlFor="role-name" required>
                             <Input
@@ -216,35 +259,36 @@ export default function RolesPermissions() {
                         {permissions.length === 0 ? (
                             <p className={styles.muted}>No hay permisos registrados en el sistema</p>
                         ) : (
-                            <div className={styles.permList}>
-                                {permissions.map((perm) => {
-                                    const presentation = describePermission(perm.name, perm.description);
-                                    return (
-                                        <div key={perm.id} className={styles.permItem}>
-                                            <Checkbox
-                                                label={<strong>{presentation.label}</strong>}
-                                                checked={formData.permissionIds.includes(perm.id)}
-                                                onChange={() => togglePermission(perm.id)}
-                                            />
-                                            <div className={styles.muted}>{presentation.description}</div>
-                                            <div className={styles.muted} title="Código técnico del permiso">Código: {perm.name}</div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
+                            <>
+                                <Input
+                                    type="search"
+                                    aria-label="Buscar permisos"
+                                    placeholder="Buscar permiso"
+                                    prefix={<Search size={14} aria-hidden="true" />}
+                                    value={permSearch}
+                                    onChange={(e) => setPermSearch(e.target.value)}
+                                />
+                                <div className={styles.permList}>
+                                    {filteredPermissions.map((perm) => {
+                                        const presentation = describePermission(perm.name, perm.description);
+                                        return (
+                                            <div key={perm.id} className={styles.permItem}>
+                                                <Checkbox
+                                                    label={<strong>{presentation.label}</strong>}
+                                                    checked={formData.permissionIds.includes(perm.id)}
+                                                    onChange={() => togglePermission(perm.id)}
+                                                />
+                                                <div className={styles.muted}>{presentation.description}</div>
+                                                <div className={styles.muted} title="Código técnico del permiso">Código: {perm.name}</div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </>
                         )}
                     </FormSection>
-
-                    <div className={styles.footer}>
-                        <Button type="button" variant="ghost" onClick={() => setIsSidebarOpen(false)}>
-                            Cancelar
-                        </Button>
-                        <Button variant="primary" type="submit">
-                            {editingRole ? 'Actualizar Rol' : 'Crear Rol'}
-                        </Button>
-                    </div>
                 </form>
             </FullScreenModal>
-        </div>
+        </PageContent>
     );
 }

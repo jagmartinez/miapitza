@@ -1,37 +1,4 @@
 /* Reglas propias del módulo Compras que no cubre @/ui. */
-.kpiGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
-  gap: var(--ui-space-4);
-  min-width: 0;
-}
-
-.filters {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: var(--ui-space-3);
-  min-width: 0;
-  max-width: 100%;
-}
-
-.filterField {
-  display: flex;
-  flex-direction: column;
-  gap: var(--ui-space-1);
-  min-width: min(100%, 10rem);
-}
-
-.filterField > label,
-.fieldLabel {
-  font-size: var(--ui-text-xs);
-  color: var(--ui-text-muted);
-}
-
-.search {
-  min-width: min(100%, 16rem);
-  flex: 1 1 16rem;
-}
 
 .rowActions {
   display: flex;
@@ -86,14 +53,6 @@
   font-size: var(--ui-text-sm);
 }
 
-.alert {
-  padding: var(--ui-space-3) var(--ui-space-4);
-  border: 1px solid var(--ui-danger);
-  border-radius: var(--ui-radius-md, 8px);
-  color: var(--ui-danger);
-  background: transparent;
-}
-
 .fileDrop {
   display: flex;
   flex-wrap: wrap;
@@ -138,22 +97,4 @@
   overflow-wrap: anywhere;
 }
 
-.checkList {
-  display: flex;
-  flex-direction: column;
-  gap: var(--ui-space-1);
-  max-height: 14rem;
-  overflow-y: auto;
-  padding: var(--ui-space-2);
-  border: 1px solid var(--ui-border);
-  border-radius: var(--ui-radius-md, 8px);
-}
-
-.num {
-  font-variant-numeric: tabular-nums;
-}
-
 .cellStack { display: flex; flex-direction: column; min-width: 0; }
-
-/* Keep "C$ 12,345.67" on one line when a subtitle wraps on phones. */
-.nowrap { white-space: nowrap; }

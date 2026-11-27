@@ -7,6 +7,7 @@ import { initializeWebSocket, subscribeWebSocket, WS_EVENTS } from '../utils/web
 import type { KitchenNotification } from '../types';
 import { useAppToast } from '../context/ToastContext';
 import { initializeSound, playNotificationSound } from '../utils/sound';
+import { Button, EmptyState, IconButton } from '@/ui';
 import './KitchenNotificationBell.css';
 
 export default function KitchenNotificationBell({ inline = false }: { inline?: boolean }) {
@@ -71,16 +72,16 @@ export default function KitchenNotificationBell({ inline = false }: { inline?: b
 
     return (
         <div className={`kitchen-notification-shell ${inline ? 'is-inline' : ''}`}>
-            <button
-                type="button"
-                className="kitchen-notification-trigger"
-                aria-label={`Avisos de cocina${unread ? `, ${unread} sin ver` : ''}`}
-                aria-expanded={open}
-                onClick={() => open ? setOpen(false) : void openPanel()}
-            >
-                <Bell size={22} />
-                {unread > 0 && <span className="kitchen-notification-count">{unread > 99 ? '99+' : unread}</span>}
-            </button>
+            <span className="kitchen-notification-trigger">
+                <IconButton
+                    icon={Bell}
+                    label={`Avisos de cocina${unread ? `, ${unread} sin ver` : ''}`}
+                    tooltip="Avisos de cocina"
+                    aria-expanded={open}
+                    onClick={() => open ? setOpen(false) : void openPanel()}
+                />
+                {unread > 0 && <span className="kitchen-notification-count" aria-hidden="true">{unread > 99 ? '99+' : unread}</span>}
+            </span>
 
             {open && (
                 <section className="kitchen-notification-panel" aria-label="Avisos persistentes de cocina">
@@ -89,11 +90,11 @@ export default function KitchenNotificationBell({ inline = false }: { inline?: b
                             <strong>Avisos de cocina</strong>
                             <small>{notifications.length} pendientes de atender</small>
                         </div>
-                        <button type="button" onClick={() => setOpen(false)} aria-label="Cerrar avisos"><X size={20} /></button>
+                        <IconButton icon={X} label="Cerrar avisos" tooltip="Cerrar" onClick={() => setOpen(false)} />
                     </header>
                     <div className="kitchen-notification-list">
                         {notifications.length === 0 ? (
-                            <div className="kitchen-notification-empty"><CheckCheck size={26} /> Todo atendido</div>
+                            <EmptyState icon={CheckCheck} title="Todo atendido" />
                         ) : notifications.map((notification) => (
                             <article key={notification.id} className={`kitchen-notification-item status-${notification.status.toLowerCase()}`}>
                                 <div>
@@ -101,9 +102,14 @@ export default function KitchenNotificationBell({ inline = false }: { inline?: b
                                     <p>{notification.message}</p>
                                     <time>{new Date(notification.createdAt).toLocaleTimeString('es-NI', { hour: '2-digit', minute: '2-digit' })}</time>
                                 </div>
-                                <button type="button" disabled={attendingIds.has(notification.id)} onClick={() => void attend(notification.id)}>
-                                    <Check size={18} /> {attendingIds.has(notification.id) ? 'Guardando…' : 'Atendido'}
-                                </button>
+                                <Button
+                                    size="sm"
+                                    icon={Check}
+                                    loading={attendingIds.has(notification.id)}
+                                    onClick={() => void attend(notification.id)}
+                                >
+                                    {attendingIds.has(notification.id) ? 'Guardando…' : 'Atendido'}
+                                </Button>
                             </article>
                         ))}
                     </div>

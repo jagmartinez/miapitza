@@ -21,20 +21,18 @@
   grid-template-columns: auto minmax(200px, 1fr) minmax(380px, .9fr);
   align-items: center;
   gap: .8rem;
-  padding: 1rem;
-  border: 1px solid color-mix(in srgb, var(--payroll-accent) 24%, var(--payroll-border));
-  border-radius: 11px;
-  background: linear-gradient(110deg, var(--payroll-soft), var(--ui-surface) 68%);
+  padding: 0 0 1rem;
+  border-bottom: 1px solid var(--payroll-border);
 }
 .payroll-operation-employee-summary h4 { font-size: 1.05rem; }
 .payroll-operation-employee-summary p { margin-top: .15rem; font-size: .78rem; }
 .payroll-operation-employee-avatar { display: grid; width: 42px; height: 42px; place-items: center; border-radius: 10px; background: var(--payroll-accent); color: var(--ui-primary-fg); }
-.payroll-operation-employee-summary dl { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; margin: 0; overflow: hidden; border: 1px solid var(--payroll-border); border-radius: 9px; background: var(--payroll-border); }
-.payroll-operation-employee-summary dl > div { display: grid; gap: .2rem; padding: .65rem .75rem; background: var(--ui-surface); }
+.payroll-operation-employee-summary dl { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; margin: 0; }
+.payroll-operation-employee-summary dl > div { display: grid; gap: .2rem; padding: .2rem .75rem; border-left: 1px solid var(--payroll-border); }
 .payroll-operation-employee-summary dt { color: var(--ui-text-muted); font-size: .68rem; font-weight: 700; }
 .payroll-operation-employee-summary dd { margin: 0; font-size: .86rem; font-weight: 850; }
-.payroll-operation-employee-summary dl .net { background: color-mix(in srgb, var(--ui-success) 9%, var(--ui-surface)); color: var(--ui-success); }
-.payroll-operation-employee-detail section { display: grid; align-content: start; gap: .6rem; min-width: 0; padding: .95rem; border: 1px solid var(--payroll-border); border-radius: 10px; background: var(--ui-surface); box-shadow: none; }
+.payroll-operation-employee-summary dl .net { color: var(--ui-success); }
+.payroll-operation-employee-detail section { display: grid; align-content: start; gap: .6rem; min-width: 0; padding: .95rem 0 0; border: 0; border-top: 1px solid var(--payroll-border); border-radius: 0; background: transparent; box-shadow: none; }
 .payroll-operation-detail-heading { display: flex; align-items: center; gap: .55rem; padding-bottom: .65rem; border-bottom: 1px solid var(--payroll-border); color: var(--payroll-accent); }
 .payroll-operation-detail-heading > div { display: grid; gap: .1rem; }
 .payroll-operation-detail-heading h4 { color: var(--ui-text); }
@@ -43,11 +41,10 @@
 .payroll-operation-line { display: flex; justify-content: space-between; gap: 1rem; padding: .2rem 0; }
 .payroll-operation-line > div { display: grid; }
 .payroll-operation-line > span { font-variant-numeric: tabular-nums; font-weight: 750; white-space: nowrap; }
-.payroll-operation-detail-empty { padding: .7rem; border-radius: 7px; background: var(--ui-surface-2); font-size: .8rem; text-align: center; }
-.payroll-operation-detail-ok { display: flex; align-items: center; gap: .45rem; padding: .7rem; border-radius: 8px; background: color-mix(in srgb, var(--ui-success) 9%, var(--ui-surface)); color: var(--ui-success); font-size: .82rem; font-weight: 700; }
-.payroll-operation-anomaly { display: grid; padding: .55rem; border-radius: 7px; background: color-mix(in srgb, var(--ui-warning) 9%, var(--ui-surface)); }
-.payroll-operation-anomaly.blocking { background: color-mix(in srgb, var(--ui-danger) 9%, var(--ui-surface)); color: var(--ui-danger); }
-.payroll-operation-payslip { border-color: color-mix(in srgb, var(--ui-success) 32%, var(--ui-border)) !important; }
+.payroll-operation-detail-empty { padding: .4rem 0; color: var(--ui-text-muted); font-size: .8rem; }
+.payroll-operation-detail-ok { display: flex; align-items: center; gap: .45rem; padding: .4rem 0; color: var(--ui-success); font-size: .82rem; font-weight: 700; }
+.payroll-operation-anomaly { display: grid; padding: .45rem 0 .45rem .65rem; border-left: 3px solid var(--ui-warning); }
+.payroll-operation-anomaly.blocking { border-left-color: var(--ui-danger); color: var(--ui-danger); }
 .payroll-operation-payslip .payroll-operation-detail-heading { color: var(--ui-success); }
 .payroll-operation-payslip-net { font-size: 1rem; }
 .payroll-operation-statutory { grid-column: 1 / -1; }

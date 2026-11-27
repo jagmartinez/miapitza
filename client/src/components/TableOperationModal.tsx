@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AppSelect, Button, Field, FullScreenModal, Textarea } from '@/ui';
+import {
+    AppSelect, Button, Checkbox, Field, FormGrid, FormSection, FullScreenModal, Input, NumberInput, SegmentedControl, Textarea,
+    formatNumber,
+} from '@/ui';
 import { ordersAPI } from '../services/api';
 import { ACTIVE_ORDER_STATUSES } from '../utils/orderStatus';
 import type { Order, Table } from '../types';
@@ -164,6 +167,9 @@ export default function TableOperationModal({
             && (transferMode === 'FULL' || transferSlices.length > 0))
         : Boolean(destinationTableId && sourceTableIds.length > 0 && !sourceTableIds.includes(Number(destinationTableId)));
 
+    const sourceTableNumber = tables.find((table) => table.id === Number(sourceTableId))?.number;
+    const destinationTableNumber = tables.find((table) => table.id === Number(destinationTableId))?.number;
+
     return (
         <FullScreenModal
             isOpen={isOpen}
@@ -183,149 +189,154 @@ export default function TableOperationModal({
             )}
         >
             <div className="table-operation-form">
-                <div className="table-operation-guide">
-                    <span className="active">1</span>
-                    <div><strong>{operation === 'TRANSFER' ? 'Define el traslado' : 'Elige la cuenta principal'}</strong><small>{operation === 'TRANSFER' ? 'Selecciona origen, destino y alcance.' : 'Después marca las mesas que se unirán.'}</small></div>
-                </div>
-                {operation === 'TRANSFER' && sourceTableId && destinationTableId && (
-                    <div className={`table-transfer-route mode-${transferMode.toLowerCase()}`} aria-label="Vista previa del cambio de mesa">
-                        <div><small>Origen</small><strong>Mesa {tables.find((table) => table.id === Number(sourceTableId))?.number}</strong><span>{transferMode === 'FULL' ? 'Se libera al completar' : 'Conserva el consumo restante'}</span></div>
-                        <span><ArrowRight size={22} /></span>
-                        <div><small>Destino</small><strong>Mesa {tables.find((table) => table.id === Number(destinationTableId))?.number}</strong><span>{transferMode === 'FULL' ? 'Recibe toda la orden' : 'Recibe solo lo seleccionado'}</span></div>
-                    </div>
-                )}
-                {operation === 'TRANSFER' && (
-                    <Field label="Mesa origen" htmlFor="operation-source">
-                        <AppSelect<string>
-                            inputId="operation-source"
-                            placeholder="Selecciona una mesa ocupada"
-                            options={sourceOptions}
-                            value={sourceTableId || null}
-                            onChange={(value) => {
-                                const nextId = value || '';
-                                setSourceTableId(nextId);
-                                if (nextId === destinationTableId) setDestinationTableId('');
-                            }}
-                        />
-                    </Field>
-                )}
+                <FormSection
+                    step={1}
+                    title={operation === 'TRANSFER' ? 'Define el traslado' : 'Elige la cuenta principal'}
+                    description={operation === 'TRANSFER' ? 'Selecciona origen, destino y alcance.' : 'Después marca las mesas que se unirán.'}
+                >
+                    {operation === 'TRANSFER' && sourceTableId && destinationTableId && (
+                        <div className={`table-transfer-route mode-${transferMode.toLowerCase()}`} aria-label="Vista previa del cambio de mesa">
+                            <div><small>Origen</small><strong>Mesa {sourceTableNumber}</strong><span>{transferMode === 'FULL' ? 'Se libera al completar' : 'Conserva el consumo restante'}</span></div>
+                            <ArrowRight size={20} aria-hidden="true" className="table-transfer-route__arrow" />
+                            <div><small>Destino</small><strong>Mesa {destinationTableNumber}</strong><span>{transferMode === 'FULL' ? 'Recibe toda la orden' : 'Recibe solo lo seleccionado'}</span></div>
+                        </div>
+                    )}
+                    <FormGrid>
+                        {operation === 'TRANSFER' && (
+                            <Field label="Mesa origen" htmlFor="operation-source">
+                                <AppSelect<string>
+                                    inputId="operation-source"
+                                    placeholder="Selecciona una mesa ocupada"
+                                    options={sourceOptions}
+                                    value={sourceTableId || null}
+                                    onChange={(value) => {
+                                        const nextId = value || '';
+                                        setSourceTableId(nextId);
+                                        if (nextId === destinationTableId) setDestinationTableId('');
+                                    }}
+                                />
+                            </Field>
+                        )}
 
-                <Field label={operation === 'TRANSFER' ? 'Mesa destino' : 'Cuenta principal / mesa destino'} htmlFor="operation-destination">
-                    <AppSelect<string>
-                        inputId="operation-destination"
-                        placeholder={operation === 'TRANSFER' ? 'Selecciona la mesa destino' : 'Selecciona dónde quedará la cuenta'}
-                        options={destinationOptions}
-                        value={destinationTableId || null}
-                        onChange={(value) => {
-                            const nextId = value || '';
-                            setDestinationTableId(nextId);
-                            setSourceTableIds((current) => current.filter((id) => id !== Number(nextId)));
-                        }}
-                    />
-                </Field>
-                {operation === 'TRANSFER' && sourceTableId && destinationOptions.length === 0 && (
-                    <div className="table-operation-empty" role="status">
-                        No hay otra mesa compatible disponible como destino.
-                    </div>
-                )}
+                        <Field
+                            label={operation === 'TRANSFER' ? 'Mesa destino' : 'Cuenta principal / mesa destino'}
+                            htmlFor="operation-destination"
+                            error={operation === 'TRANSFER' && sourceTableId && destinationOptions.length === 0
+                                ? 'No hay otra mesa compatible disponible como destino.'
+                                : undefined}
+                        >
+                            <AppSelect<string>
+                                inputId="operation-destination"
+                                placeholder={operation === 'TRANSFER' ? 'Selecciona la mesa destino' : 'Selecciona dónde quedará la cuenta'}
+                                options={destinationOptions}
+                                value={destinationTableId || null}
+                                onChange={(value) => {
+                                    const nextId = value || '';
+                                    setDestinationTableId(nextId);
+                                    setSourceTableIds((current) => current.filter((id) => id !== Number(nextId)));
+                                }}
+                            />
+                        </Field>
 
-                {operation === 'TRANSFER' && (
-                    <Field label="Orden a trasladar" htmlFor="operation-order" error={ordersError || undefined}>
-                        <AppSelect<string>
-                            inputId="operation-order"
-                            placeholder={loadingOrders ? 'Cargando órdenes…' : 'Selecciona una orden'}
-                            options={orderOptions}
-                            value={orderId || null}
-                            isDisabled={!sourceTableId || loadingOrders}
-                            onChange={(value) => {
-                                setOrderId(value || '');
-                                setTransferQuantities({});
-                            }}
-                        />
-                    </Field>
-                )}
+                        {operation === 'TRANSFER' && (
+                            <Field label="Orden a trasladar" htmlFor="operation-order" error={ordersError || undefined}>
+                                <AppSelect<string>
+                                    inputId="operation-order"
+                                    placeholder={loadingOrders ? 'Cargando órdenes…' : 'Selecciona una orden'}
+                                    options={orderOptions}
+                                    value={orderId || null}
+                                    isDisabled={!sourceTableId || loadingOrders}
+                                    onChange={(value) => {
+                                        setOrderId(value || '');
+                                        setTransferQuantities({});
+                                    }}
+                                />
+                            </Field>
+                        )}
+                    </FormGrid>
+                </FormSection>
 
                 {operation === 'TRANSFER' && selectedOrder && (
-                    <fieldset>
-                        <legend>Alcance del traslado</legend>
-                        <div className="table-operation-mode" role="radiogroup" aria-label="Alcance del traslado">
-                            <label>
-                                <input type="radio" name="transfer-mode" checked={transferMode === 'FULL'} onChange={() => setTransferMode('FULL')} />
-                                Orden completa
-                            </label>
-                            <label>
-                                <input type="radio" name="transfer-mode" checked={transferMode === 'PARTIAL'} onChange={() => setTransferMode('PARTIAL')} />
-                                Productos y cantidades
-                            </label>
-                        </div>
+                    <FormSection step={2} title="Alcance del traslado">
+                        <SegmentedControl<'FULL' | 'PARTIAL'>
+                            ariaLabel="Alcance del traslado"
+                            options={[
+                                { value: 'FULL', label: 'Orden completa' },
+                                { value: 'PARTIAL', label: 'Productos y cantidades' },
+                            ]}
+                            value={transferMode}
+                            onChange={setTransferMode}
+                        />
                         {transferMode === 'PARTIAL' && (
-                            <div className="table-operation-items">
-                                {transferableItems.map((item) => {
-                                    const quantity = transferQuantities[item.id] ?? 0;
-                                    return (
-                                        <label key={item.id}>
-                                            <span>{item.menuItem?.name || `Producto #${item.menuItemId}`} <small>({item.quantity} disp.)</small></span>
-                                            <input
-                                                type="number"
-                                                inputMode="numeric"
-                                                min={0}
-                                                max={item.quantity}
-                                                value={quantity}
-                                                aria-label={`Cantidad a trasladar de ${item.menuItem?.name || `producto ${item.menuItemId}`}`}
-                                                onChange={(event) => {
-                                                    const next = Math.max(0, Math.min(item.quantity, Number(event.target.value) || 0));
-                                                    setTransferQuantities((current) => ({ ...current, [item.id]: next }));
-                                                }}
-                                            />
-                                        </label>
-                                    );
-                                })}
-                                {transferableItems.length === 0 && <p role="alert">La orden no tiene productos trasladables: los ya enviados a cocina se trasladan moviendo la orden completa.</p>}
-                            </div>
+                            transferableItems.length === 0 ? (
+                                <p className="table-operation-note" role="alert">La orden no tiene productos trasladables: los ya enviados a cocina se trasladan moviendo la orden completa.</p>
+                            ) : (
+                                <ul className="table-operation-items">
+                                    {transferableItems.map((item) => {
+                                        const quantity = transferQuantities[item.id] ?? 0;
+                                        const name = item.menuItem?.name || `Producto #${item.menuItemId}`;
+                                        return (
+                                            <li key={item.id}>
+                                                <span className="table-operation-items__name">
+                                                    {name} <small>({formatNumber(item.quantity, 0)} disp.)</small>
+                                                </span>
+                                                <NumberInput
+                                                    decimals={0}
+                                                    min={0}
+                                                    value={quantity}
+                                                    aria-label={`Cantidad a trasladar de ${item.menuItem?.name || `producto ${item.menuItemId}`}`}
+                                                    onChange={(value) => {
+                                                        const next = Math.max(0, Math.min(item.quantity, Math.trunc(value ?? 0)));
+                                                        setTransferQuantities((current) => ({ ...current, [item.id]: next }));
+                                                    }}
+                                                />
+                                            </li>
+                                        );
+                                    })}
+                                </ul>
+                            )
                         )}
-                    </fieldset>
+                    </FormSection>
                 )}
 
                 {operation === 'CONSOLIDATE' && (
-                    <fieldset className="table-operation-sources">
-                        <legend>Mesas origen</legend>
-                        <div className="table-operation-source-toolbar">
-                            <label className="table-operation-search">
-                                <Search size={17} aria-hidden="true" />
-                                <input
-                                    type="search"
-                                    value={sourceSearch}
-                                    onChange={(event) => setSourceSearch(event.target.value)}
-                                    placeholder="Buscar por mesa o salón"
-                                    aria-label="Buscar mesas origen"
-                                />
-                            </label>
-                            <span><strong>{sourceTableIds.length}</strong> seleccionadas · {consolidationSources.length} disponibles</span>
-                        </div>
-                        <div className="table-operation-checks">
-                            {visibleConsolidationSources.map((table) => (
-                                     <label key={table.id} className={sourceTableIds.includes(table.id) ? 'selected' : ''}>
-                                        <input
-                                            type="checkbox"
-                                            checked={sourceTableIds.includes(table.id)}
-                                            onChange={(event) => setSourceTableIds((current) => event.target.checked
-                                                ? [...current, table.id]
-                                                : current.filter((id) => id !== table.id))}
-                                        />
-                                        <span><strong>Mesa {table.number}</strong><small>{table.location || 'Salón principal'}</small></span>
-                                     </label>
+                    <FormSection
+                        step={2}
+                        title="Mesas origen"
+                        description={`${sourceTableIds.length} seleccionadas · ${consolidationSources.length} disponibles`}
+                    >
+                        <Input
+                            type="search"
+                            prefix={<Search size={16} aria-hidden="true" />}
+                            value={sourceSearch}
+                            onChange={(event) => setSourceSearch(event.target.value)}
+                            placeholder="Buscar por mesa o salón"
+                            aria-label="Buscar mesas origen"
+                        />
+                        {visibleConsolidationSources.length === 0 ? (
+                            <p className="table-operation-note">No hay mesas ocupadas que coincidan con la búsqueda.</p>
+                        ) : (
+                            <div className="table-operation-checks">
+                                {visibleConsolidationSources.map((table) => (
+                                    <Checkbox
+                                        key={table.id}
+                                        className={sourceTableIds.includes(table.id) ? 'is-selected' : ''}
+                                        checked={sourceTableIds.includes(table.id)}
+                                        onChange={(event) => setSourceTableIds((current) => event.target.checked
+                                            ? [...current, table.id]
+                                            : current.filter((id) => id !== table.id))}
+                                        label={<><strong>Mesa {table.number}</strong> <small>{table.location || 'Salón principal'}</small></>}
+                                    />
                                 ))}
-                            {visibleConsolidationSources.length === 0 && (
-                                <div className="table-operation-empty">No hay mesas ocupadas que coincidan con la búsqueda.</div>
-                            )}
-                        </div>
-                        {sourceTableIds.length > 0 && (
-                            <div className="table-consolidation-preview">
-                                <Merge size={18} />
-                                <span><strong>{sourceTableIds.length + 1} cuentas → mesa principal</strong><small>Los productos y totales quedarán en una sola orden.</small></span>
                             </div>
                         )}
-                    </fieldset>
+                        {sourceTableIds.length > 0 && (
+                            <p className="table-consolidation-preview">
+                                <Merge size={16} aria-hidden="true" />
+                                <span><strong>{sourceTableIds.length + 1} cuentas → mesa principal</strong> · Los productos y totales quedarán en una sola orden.</span>
+                            </p>
+                        )}
+                    </FormSection>
                 )}
 
                 <Field label="Motivo (opcional)" htmlFor="operation-reason">

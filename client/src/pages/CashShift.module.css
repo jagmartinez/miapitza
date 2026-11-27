@@ -2,13 +2,6 @@
 
 .headerMeta { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--ui-space-2) var(--ui-space-3); min-width: 0; }
 
-.notice {
-    display: flex; flex-wrap: wrap; align-items: center; gap: var(--ui-space-2);
-    margin: 0 0 var(--ui-space-4); padding: var(--ui-space-3) var(--ui-space-4);
-    border: 1px solid var(--ui-warning); border-radius: var(--ui-radius-md);
-    background: var(--ui-warning-soft); color: var(--ui-text); font-size: var(--ui-text-sm);
-}
-.notice span { flex: 1 1 16rem; min-width: 0; }
 
 
 .arqueo {
@@ -72,8 +65,6 @@
 
 .form { display: flex; flex-direction: column; gap: var(--ui-space-5); min-width: 0; }
 
-.supplierRow { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--ui-space-3); min-width: 0; }
-.supplierSelect { flex: 1 1 16rem; min-width: 0; }
 
 .denomTable { display: flex; flex-direction: column; min-width: 0; font-size: var(--ui-text-md); }
 .denomRow {
@@ -84,7 +75,7 @@
 }
 .denomHead {
     min-height: 0; padding-block: var(--ui-space-2); border-top: 0;
-    background: var(--ui-surface-2); color: var(--ui-text-muted);
+    border-bottom: 1px solid var(--ui-border); color: var(--ui-text-muted);
     font-size: var(--ui-text-xs); font-weight: 600; letter-spacing: .05em; text-transform: uppercase;
 }
 .alignEnd { text-align: right; }
@@ -98,7 +89,7 @@
 .denomCount { text-align: right; font-variant-numeric: tabular-nums; }
 .denomSubtotal { text-align: right; font-variant-numeric: tabular-nums; color: var(--ui-text-muted); overflow-wrap: anywhere; }
 .hasValue { color: var(--ui-text); font-weight: 600; }
-.denomTotal { background: var(--ui-surface-2); font-weight: 600; min-height: 48px; }
+.denomTotal { border-top: 1px solid var(--ui-border-strong, var(--ui-border)); font-weight: 600; min-height: 48px; }
 .denomTotal .denomSubtotal { color: var(--ui-text); }
 .denomTotalLabel { grid-column: 1 / 3; }
 

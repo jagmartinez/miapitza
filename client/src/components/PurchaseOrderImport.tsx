@@ -3,10 +3,11 @@ import { getApiErrorMessage } from '../utils/apiError';
 import { notifyError } from '../services/notify';
 import { purchaseOrdersAPI, suppliersAPI, branchesAPI } from '../services/api';
 import {
-    AppSelect, Button, DataTable, Field, FormGrid, FormSection, FullScreenModal, Input, Textarea, formatMoney, formatNumber,
+    AppSelect, Badge, Button, DataTable, Field, FormGrid, FormSection, FullScreenModal, Input, LoadErrorState, Textarea,
+    formatMoney, formatNumber,
     type Column,
 } from '@/ui';
-import { Download, Upload, CheckCircle, AlertTriangle, ShoppingCart, FileSpreadsheet, ArrowLeft, ArrowRight } from 'lucide-react';
+import { Download, Upload, ShoppingCart, FileSpreadsheet, ArrowLeft, ArrowRight } from 'lucide-react';
 import type { CurrencySettings } from '../utils/currency';
 import styles from '../pages/compras.module.css';
 
@@ -171,32 +172,32 @@ export default function PurchaseOrderImport({ onClose, onSaved, settings }: Purc
     const money = (value: unknown) => formatMoney(value, symbol);
 
     const previewColumns: Column<ImportItem>[] = [
-        { key: 'rowNumber', header: 'Fila', width: '0.6fr', type: 'number', decimals: 0 },
+        { key: 'rowNumber', header: 'Fila', type: 'number', decimals: 0 },
         {
-            key: 'valid', header: 'Estado', width: '0.7fr',
+            key: 'valid', header: 'Estado', type: 'status',
             render: (it) => (it.isValid
-                ? <span aria-label="Válida"><CheckCircle size={18} aria-hidden="true" /></span>
-                : <span aria-label="Con error"><AlertTriangle size={18} aria-hidden="true" /></span>),
+                ? <Badge tone="success" dot>Válida</Badge>
+                : <Badge tone="danger" dot>Con error</Badge>),
         },
-        { key: 'sku', header: 'SKU', width: '1fr', hideBelow: 'md' },
-        { key: 'name', header: 'Producto', width: '2fr' },
-        { key: 'quantity', header: 'Cantidad', width: '1fr', type: 'qty', render: (it) => `${formatNumber(it.quantity)} ${it.unit}`.trim() },
-        { key: 'purchaseUnit', header: 'Unidad Compra', width: '1fr', hideBelow: 'lg', render: (it) => it.purchaseUnit || 'Por defecto' },
-        { key: 'unitCost', header: `Costo Unit. (${symbol})`, width: '1fr', type: 'money' },
-        { key: 'total', header: `Subtotal (${symbol})`, width: '1fr', type: 'money' },
+        { key: 'sku', header: 'SKU', hideBelow: 'md' },
+        { key: 'name', header: 'Producto' },
+        { key: 'quantity', header: 'Cantidad', type: 'qty', render: (it) => `${formatNumber(it.quantity)} ${it.unit}`.trim() },
+        { key: 'purchaseUnit', header: 'Unidad Compra', hideBelow: 'lg', render: (it) => it.purchaseUnit || 'Por defecto' },
+        { key: 'unitCost', header: `Costo Unit. (${symbol})`, type: 'money' },
+        { key: 'total', header: `Subtotal (${symbol})`, type: 'money' },
         {
-            key: 'errors', header: 'Errores', width: '2fr',
+            key: 'errors', header: 'Errores', type: 'text',
             render: (it) => (it.errors.length ? <span>{it.errors.join(' · ')}</span> : ''),
         },
     ];
 
-    const footer = (
+    const footer = ({ requestClose }: { requestClose(): void }) => (
         <>
             {step === 1 && (
                 <>
-                    <Button onClick={onClose} disabled={uploading}>Cancelar</Button>
-                    <Button variant="primary" onClick={handleUpload} loading={uploading} disabled={!file || uploading}>
-                        {uploading ? 'Procesando...' : 'Procesar Archivo'}
+                    <Button onClick={requestClose} disabled={uploading}>Cancelar</Button>
+                    <Button variant="primary" onClick={handleUpload} loading={uploading} disabled={!file}>
+                        Procesar Archivo
                     </Button>
                 </>
             )}
@@ -214,9 +215,9 @@ export default function PurchaseOrderImport({ onClose, onSaved, settings }: Purc
                     <Button
                         variant="primary" icon={ShoppingCart}
                         onClick={handleConfirmImport} loading={confirming}
-                        disabled={!selectedSupplier || confirming}
+                        disabled={!selectedSupplier}
                     >
-                        {confirming ? 'Creando...' : 'Crear Orden de Compra'}
+                        Crear Orden de Compra
                     </Button>
                 </>
             )}
@@ -232,27 +233,21 @@ export default function PurchaseOrderImport({ onClose, onSaved, settings }: Purc
             subtitle={`Paso ${step} de 3 · ${STEP_LABELS[step - 1]}`}
             dirty={Boolean(file) || importData !== null}
             dirtyMessage="Hay un archivo cargado sin confirmar. Si cierras ahora se perderá."
+            footerStart={step === 1 ? (
+                <Button variant="ghost" icon={Download} onClick={handleDownloadTemplate}>Descargar Plantilla.xlsx</Button>
+            ) : undefined}
             footer={footer}
         >
             <div className={styles.stack}>
-                {error && (
-                    <div className={styles.alert} role="alert">
-                        <span className={styles.inline}>
-                            {error}
-                            <Button size="sm" variant="ghost" onClick={() => setError(null)}>Cerrar aviso</Button>
-                        </span>
-                    </div>
-                )}
+                {error && <LoadErrorState message={error} />}
 
                 {step === 1 && (
                     <>
                         <FormSection step={1} title="Descargar plantilla" description="Use la plantilla Excel para asegurarse de que los datos tengan el formato correcto.">
                             <p className={styles.muted}>
                                 Opcional: puede incluir una columna <strong>&quot;Unidad de compra&quot;</strong> (ej: caja, kg, l) para que la cantidad se convierta a la unidad base al recibir.
+                                La plantilla se descarga con el botón del pie.
                             </p>
-                            <div>
-                                <Button icon={Download} onClick={handleDownloadTemplate}>Descargar Plantilla.xlsx</Button>
-                            </div>
                         </FormSection>
                         <FormSection step={2} title="Subir archivo" description="Formatos soportados: .xlsx, .xls">
                             <div className={styles.fileDrop}>

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { usersAPI, branchesAPI, companiesAPI, rolesAPI } from '../services/api';
-import { Users as UsersIcon, Plus, Edit2, UserX, UserCheck, Lock, Search } from 'lucide-react';
+import { Users as UsersIcon, Plus, Pencil, Power, Lock, Search } from 'lucide-react';
 import type { User, Branch, Company, UserAccountType } from '../types';
 
 interface UserSavePayload {
@@ -23,11 +23,19 @@ import { useAppToast } from '../context/ToastContext';
 import { hasAnyRole } from '../utils/authz';
 import { createLatestRequestGuard } from '../utils/latestRequest';
 import styles from './catalog.module.css';
+import userStyles from './Users.module.css';
 import {
     AppSelect, Badge, Button, Checkbox, DataTable, EmptyState, Field, FormGrid, FormSection, FullScreenModal, IconButton, Input,
-    LoadErrorState, PageContent, PageHeader, SegmentedControl, TableToolbar, type Column,
+    LoadErrorState, PageContent, PageHeader, TableToolbar, Tabs, type Column,
 } from '@/ui';
 import { getApiErrorMessage } from '../utils/apiError';
+
+/**
+ * Color por defecto que muestra el selector nativo cuando el usuario aún no tiene color.
+ * Es un dato de usuario (se guarda como hex en su perfil), no un color de tema: el
+ * `<input type="color">` solo acepta hex, por eso no puede ser un token var(--ui-*).
+ */
+const DEFAULT_USER_COLOR = '#6B7280';
 
 function toApiPayload(payload: UserSavePayload): Record<string, unknown> {
     return payload as unknown as Record<string, unknown>;
@@ -369,19 +377,23 @@ export default function Users() {
         {
             key: 'status',
             header: 'Estado',
+            type: 'status',
             render: (u) => <Badge tone={u.status === 'ACTIVE' ? 'success' : 'neutral'} dot>{u.status === 'ACTIVE' ? 'Activo' : 'Inactivo'}</Badge>
         },
         {
             key: 'actions',
             header: 'Acciones',
             type: 'actions',
+            width: '100px',
             render: (u) => (
                 <div className={styles.rowActions}>
-                    <IconButton size="sm" icon={Edit2} label={`Editar ${u.name}`} onClick={() => handleOpenSidebar(u)} />
+                    <IconButton size="sm" icon={Pencil} tooltip="Editar" label={`Editar ${u.name}`} onClick={() => handleOpenSidebar(u)} />
                     {canManageUserStatus && (
                         <IconButton
                             size="sm"
-                            icon={u.status === 'ACTIVE' ? UserX : UserCheck}
+                            icon={Power}
+                            tone={u.status === 'ACTIVE' ? 'danger' : 'primary'}
+                            tooltip={u.status === 'ACTIVE' ? 'Desactivar' : 'Activar'}
                             label={u.status === 'ACTIVE' ? `Inhabilitar ${u.name} sin borrar historial` : `Reactivar ${u.name}`}
                             onClick={() => handleStatusChange(u)}
                         />
@@ -405,7 +417,7 @@ export default function Users() {
         <PageContent>
             <PageHeader
                 title="Usuarios"
-                description={`${users.filter((u) => u.status === 'ACTIVE').length} activos · ${users.length} registrados`}
+                description="Cuentas de acceso, roles y sucursales permitidas"
                 actions={(
                     <Button variant="primary" icon={Plus} onClick={() => handleOpenSidebar()} disabled={Boolean(loadError)}>
                         Nuevo usuario
@@ -419,6 +431,17 @@ export default function Users() {
                     onRetry={() => { void loadData(lastRequestedCompanyId.current, true); }}
                 />
             ) : (
+                <>
+                <Tabs
+                    ariaLabel="Filtrar usuarios por estado"
+                    active={statusFilter}
+                    onChange={(id) => setStatusFilter(id as typeof statusFilter)}
+                    tabs={statusOptions.map((o) => ({
+                        id: o.value,
+                        label: o.label,
+                        badge: o.value === 'all' ? users.length : users.filter((u) => u.status === o.value).length,
+                    }))}
+                />
                 <DataTable<User>
                     ariaLabel="Listado de usuarios"
                     rows={filteredUsers}
@@ -445,10 +468,10 @@ export default function Users() {
                                 onChange={(e) => setSearchQuery(e.target.value)}
                             />
                             <AppSelect isClearable={false} aria-label="Filtrar por rol" options={roleOptions} value={roleFilter} onChange={(v) => { if (v) setRoleFilter(String(v)); }} placeholder="Filtrar por rol" />
-                            <SegmentedControl ariaLabel="Estado" options={statusOptions} value={statusFilter} onChange={setStatusFilter} />
                         </TableToolbar>
                     )}
                 />
+                </>
             )}
 
             <FullScreenModal
@@ -566,9 +589,8 @@ export default function Users() {
                                             <input
                                                 id="user-color"
                                                 type="color"
-                                                className={styles.colorInput}
-                                                style={{ width: 56 }}
-                                                value={formData.color || '#6B7280'}
+                                                className={userStyles.colorSwatch}
+                                                value={formData.color || DEFAULT_USER_COLOR}
                                                 onChange={e => setFormData({ ...formData, color: e.target.value })}
                                             />
                                             {formData.color && (

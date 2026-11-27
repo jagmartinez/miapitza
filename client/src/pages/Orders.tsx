@@ -7,13 +7,13 @@ import { isVoidableOrderLine, isVoidedOrderLine, orderLineVoidBlocker } from '..
 import { useDebounce } from '../utils/useDebounce';
 import PaymentModal from '../components/PaymentModal';
 import {
-    AppSelect, Badge, Button, DataTable, DateInput, EmptyState, Field, FormSection, FullScreenModal, Input,
-    PageContent, PageHeader, SegmentedControl, Tabs, Textarea,
+    AppSelect, Badge, Button, DataTable, DateInput, Field, FormSection, FullScreenModal, Input,
+    LoadErrorState, PageContent, PageHeader, TableToolbar, Tabs, Textarea,
     type Column, type Opt, type Tone,
 } from '@/ui';
 import {
     Send, CheckCircle, XCircle, CreditCard,
-    Printer, Package,
+    Printer, Package, Search, Ban,
 } from 'lucide-react';
 import type { Order, Warehouse } from '../types';
 import { useCurrency } from '../hooks/useCurrency';
@@ -36,6 +36,8 @@ interface ActiveShiftStatus {
     shift?: { cashRegister?: { branch?: { id: number } } } | null;
 }
 
+const ORDER_STATUS_TABS = ['all', 'OPEN', 'SENT_TO_KITCHEN', 'READY', 'DELIVERED', 'PAID', 'CANCELLED'] as const;
+
 export default function Orders() {
     const { user } = useAuth();
     const { formatMoney, symbol: currencySymbol } = useCurrency();
@@ -57,6 +59,8 @@ export default function Orders() {
     const [statusFilter, setStatusFilter] = useState<string>('all');
     const [page, setPage] = useState(1);
     const [totalOrders, setTotalOrders] = useState(0);
+    // Total por estado (mismo rango y búsqueda) para los badges de todas las pestañas.
+    const [statusCounts, setStatusCounts] = useState<Record<string, number>>({});
     const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
     const [voidLineItemId, setVoidLineItemId] = useState<number | null>(null);
     const [activeTab, setActiveTab] = useState<'info' | 'items'>('info');
@@ -81,6 +85,7 @@ export default function Orders() {
     const [cancelReason, setCancelReason] = useState('');
     const [cancelWarehouseId, setCancelWarehouseId] = useState<number | null>(null);
     const [cancelWarehouses, setCancelWarehouses] = useState<Warehouse[]>([]);
+    const [cancelling, setCancelling] = useState(false);
 
     const [showDeliveryModal, setShowDeliveryModal] = useState(false);
     const [deliveryOrder, setDeliveryOrder] = useState<Order | null>(null);
@@ -121,6 +126,20 @@ export default function Orders() {
                 default:
                     startDate = new Date(now.getTime() - (24 * 60 * 60 * 1000)).toISOString();
             }
+
+            const countBase = { startDate, endDate, ...(debouncedSearch.trim() ? { search: debouncedSearch.trim() } : {}) };
+            void Promise.all(ORDER_STATUS_TABS.map(async (status) => {
+                try {
+                    const r = await ordersAPI.getAll({ ...countBase, ...(status !== 'all' ? { status } : {}), page: 1, limit: 1 });
+                    const rows = Array.isArray(r.data?.data) ? r.data.data : [];
+                    return [status as string, readServerPagination(r.data, rows.length, 1, 1).total] as [string, number];
+                } catch {
+                    return null;
+                }
+            })).then((entries) => {
+                if (requestId !== loadOrdersRequestRef.current) return;
+                setStatusCounts(Object.fromEntries(entries.filter((e): e is [string, number] => e !== null)));
+            });
 
             const response = await ordersAPI.getAll({
                 startDate,
@@ -326,6 +345,7 @@ export default function Orders() {
             showWarning('Selecciona la bodega que registrará el desperdicio de los productos ya enviados.');
             return;
         }
+        setCancelling(true);
         try {
             await ordersAPI.cancel(cancelOrder.id, cancelReason, cancelWarehouseId ?? undefined);
             loadOrders();
@@ -337,6 +357,8 @@ export default function Orders() {
         } catch (error) {
             console.error('Error cancelling order:', error);
             showError(getApiErrorMessage(error, 'Error al cancelar la orden'));
+        } finally {
+            setCancelling(false);
         }
     };
 
@@ -461,24 +483,24 @@ export default function Orders() {
 
         if (order.status === 'OPEN' && canSendKitchen) {
             buttons.push(
-                <Button key="send" variant="primary" onClick={() => handleUpdateStatus(order.id, 'SENT_TO_KITCHEN')}>
-                    <Send size={16} /> Enviar a Cocina
+                <Button key="send" variant="primary" icon={Send} onClick={() => handleUpdateStatus(order.id, 'SENT_TO_KITCHEN')}>
+                    Enviar a Cocina
                 </Button>
             );
         }
 
         if (canManageKitchen && (order.status === 'SENT_TO_KITCHEN' || order.status === 'IN_PREPARATION')) {
             buttons.push(
-                <Button key="ready" variant="primary" onClick={() => handleUpdateStatus(order.id, 'READY')}>
-                    <CheckCircle size={16} /> Marcar Lista
+                <Button key="ready" variant="primary" icon={CheckCircle} onClick={() => handleUpdateStatus(order.id, 'READY')}>
+                    Marcar Lista
                 </Button>
             );
         }
 
         if (canDeliver && order.status === 'READY' && (order.financialStatus === 'PAID' || Math.round(Number(order.total) * 100) === 0)) {
             buttons.push(
-                <Button key="delivered" variant="primary" onClick={() => void openDeliveryModal(order)}>
-                    <Package size={16} /> Entregar
+                <Button key="delivered" variant="primary" icon={Package} onClick={() => void openDeliveryModal(order)}>
+                    Entregar
                 </Button>
             );
         }
@@ -493,10 +515,12 @@ export default function Orders() {
                 <Button
                     key="pay"
                     variant="primary"
+                    icon={CreditCard}
+                    loading={preparingPaymentOrderId === order.id}
                     disabled={preparingPaymentOrderId === order.id}
                     onClick={() => void handlePaymentClick(order)}
                 >
-                    <CreditCard size={16} /> {preparingPaymentOrderId === order.id ? 'Preparando…' : 'Cobrar'}
+                    {preparingPaymentOrderId === order.id ? 'Preparando…' : 'Cobrar'}
                 </Button>
             );
         }
@@ -511,8 +535,8 @@ export default function Orders() {
             && !(isWaiterWithoutAdministrativeRole && wasSentToKitchen)
         ) {
             buttons.push(
-                <Button key="cancel" variant="danger" onClick={() => void openCancelModal(order)}>
-                    <XCircle size={16} /> Cancelar
+                <Button key="cancel" variant="danger" icon={XCircle} onClick={() => void openCancelModal(order)}>
+                    Cancelar
                 </Button>
             );
         }
@@ -526,22 +550,22 @@ export default function Orders() {
             )
         ) {
             buttons.push(
-                <Button key="reprint" variant="secondary" onClick={() => void handleReprintInvoice(order)}>
-                    <Printer size={16} /> {order.invoiceNumber ? 'Descargar Factura' : 'Emitir Factura Original'}
+                <Button key="reprint" variant="secondary" icon={Printer} onClick={() => void handleReprintInvoice(order)}>
+                    {order.invoiceNumber ? 'Descargar Factura' : 'Emitir Factura Original'}
                 </Button>
             );
         }
         if (order.fiscalCreditNote) {
             buttons.push(
                 <Button key="credit-note" variant="secondary" onClick={() => void downloadFiscalCounterDocument(order, 'CREDIT_NOTE')}>
-                    <Printer size={16} /> Nota de crédito
+                    Nota de crédito
                 </Button>
             );
         }
         if (order.fiscalInvoiceCancellation) {
             buttons.push(
                 <Button key="invoice-cancellation" variant="secondary" onClick={() => void downloadFiscalCounterDocument(order, 'CANCELLATION')}>
-                    <Printer size={16} /> Constancia de anulación
+                    Constancia de anulación
                 </Button>
             );
         }
@@ -553,7 +577,7 @@ export default function Orders() {
     const filteredOrders = orders.filter(o => statusFilter === 'all'
         || (statusFilter === 'PAID' ? o.financialStatus === 'PAID' : o.status === statusFilter));
 
-    const statusOptions: { value: string; label: string }[] = [
+    const statusOptions: { value: (typeof ORDER_STATUS_TABS)[number]; label: string }[] = [
         { value: 'all', label: 'Todas' },
         { value: 'OPEN', label: 'Abierta' },
         { value: 'SENT_TO_KITCHEN', label: 'En cocina' },
@@ -571,16 +595,28 @@ export default function Orders() {
     const rangeLabel = dateOptions.find((o) => o.value === dateRange)?.label ?? '';
 
     const columns: Column<Order>[] = [
-        { key: 'id', header: '#', width: '0.8fr', render: (o) => `#${o.id}` },
-        { key: 'time', header: 'Hora', width: '1fr', render: (o) => new Date(o.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) },
-        { key: 'status', header: 'Estado', width: '1.5fr', type: 'status', render: (o) => <Badge tone={getStatusTone(o.status)} dot>{getStatusText(o.status)}</Badge> },
-        { key: 'financial', header: 'Pago', width: '1.7fr', type: 'status', render: (o) => <Badge tone={financialTone(o)}>{financialLabel(o)}</Badge> },
-        { key: 'table', header: 'Mesa', width: '1.3fr', render: (o) => (o.table ? `Mesa ${o.table.number}` : 'Para llevar') },
-        { key: 'waiter', header: 'Mesero', width: '1fr', render: (o) => o.user?.name || 'N/D' },
-        { key: 'customer', header: 'Cliente', width: '1fr', hideBelow: 'lg', render: (o) => o.customerName || '' },
-        { key: 'items', header: 'Items', width: '0.8fr', type: 'number', decimals: 0, accessor: (o) => o.items?.length ?? 0 },
-        { key: 'total', header: `Total (${currencySymbol})`, width: '1.3fr', type: 'money', accessor: (o) => Number(o.total) },
+        { key: 'id', header: '#', render: (o) => `#${o.id}` },
+        { key: 'time', header: 'Hora', type: 'time', render: (o) => new Date(o.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) },
+        { key: 'status', header: 'Estado', type: 'status', render: (o) => <Badge tone={getStatusTone(o.status)} dot>{getStatusText(o.status)}</Badge> },
+        { key: 'financial', header: 'Pago', type: 'status', render: (o) => <Badge tone={financialTone(o)}>{financialLabel(o)}</Badge> },
+        { key: 'table', header: 'Mesa', render: (o) => (o.table ? `Mesa ${o.table.number}` : 'Para llevar') },
+        { key: 'waiter', header: 'Mesero', render: (o) => o.user?.name || 'N/D' },
+        { key: 'customer', header: 'Cliente', hideBelow: 'lg', render: (o) => o.customerName || '' },
+        { key: 'items', header: 'Ítems', type: 'qty', decimals: 0, accessor: (o) => o.items?.length ?? 0 },
+        { key: 'total', header: `Total (${currencySymbol})`, type: 'money', accessor: (o) => Number(o.total) },
     ];
+
+    // Acciones de la orden en el pie del modal: cancelar a la izquierda, el resto a la derecha.
+    const orderActions = selectedOrder ? getActionButtons(selectedOrder) : [];
+    const orderFooterStart = orderActions.filter((b) => b.key === 'cancel');
+    const orderFooterEnd = orderActions.filter((b) => b.key !== 'cancel');
+    const loadErrorMessage = 'No se pudieron cargar las órdenes. Los datos mostrados pueden estar desactualizados.';
+    const formatDateTime = (value: string) => new Date(value).toLocaleString('es-ES', {
+        day: '2-digit',
+        month: 'short',
+        hour: '2-digit',
+        minute: '2-digit',
+    });
 
     return (
         <PageContent>
@@ -589,40 +625,45 @@ export default function Orders() {
                 description={`Control operativo de sala y cocina · ${rangeLabel}`}
             />
 
-            <div className="orders-filters">
-                <SegmentedControl ariaLabel="Estado de la orden" options={statusOptions} value={statusFilter} onChange={setStatusFilter} />
-                <div className="orders-filters__field">
-                    <AppSelect<'24h' | '7d' | '30d' | 'custom'>
-                        aria-label="Filtrar por fecha"
-                        options={dateOptions}
-                        value={dateRange}
-                        onChange={(v) => { if (v) setDateRange(v); }}
-                        isClearable={false}
-                        placeholder="Filtrar por fecha"
-                    />
-                </div>
-                <div className="orders-filters__field">
-                    <Input
-                        aria-label="Buscar órdenes por número, mesa, mesero, cliente o factura"
-                        placeholder="Buscar por #, mesa, mesero o cliente..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                    />
-                </div>
-                {dateRange === 'custom' && (
-                    <div className="orders-filters__dates">
-                        <DateInput aria-label="Desde" value={customStartDate} onChange={(e) => setCustomStartDate(e.target.value)} />
-                        <span aria-hidden="true">-</span>
-                        <DateInput aria-label="Hasta" value={customEndDate} onChange={(e) => setCustomEndDate(e.target.value)} />
-                    </div>
-                )}
-            </div>
+            <Tabs
+                ariaLabel="Estado de la orden"
+                active={statusFilter}
+                onChange={setStatusFilter}
+                tabs={statusOptions.map((o) => ({
+                    id: o.value,
+                    label: o.label,
+                    badge: loadError ? undefined : o.value === statusFilter && !loading ? totalOrders : statusCounts[o.value],
+                }))}
+            />
 
-            {loadError && (
-                <div className="orders-warning" role="alert">
-                    <span>No se pudieron cargar las órdenes. Los datos mostrados pueden estar desactualizados.</span>
-                    <Button size="sm" onClick={() => void loadOrders()}>Reintentar</Button>
-                </div>
+            <TableToolbar>
+                <Input
+                    type="search"
+                    prefix={<Search size={16} aria-hidden="true" />}
+                    aria-label="Buscar órdenes por número, mesa, mesero, cliente o factura"
+                    placeholder="Buscar por #, mesa, mesero o cliente..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                />
+                <AppSelect<'24h' | '7d' | '30d' | 'custom'>
+                    aria-label="Filtrar por fecha"
+                    options={dateOptions}
+                    value={dateRange}
+                    onChange={(v) => { if (v) setDateRange(v); }}
+                    isClearable={false}
+                    placeholder="Filtrar por fecha"
+                />
+                {dateRange === 'custom' && (
+                    <DateInput aria-label="Desde" value={customStartDate} onChange={(e) => setCustomStartDate(e.target.value)} />
+                )}
+                {dateRange === 'custom' && (
+                    <DateInput aria-label="Hasta" value={customEndDate} onChange={(e) => setCustomEndDate(e.target.value)} />
+                )}
+            </TableToolbar>
+
+            {/* Con filas ya cargadas se conservan (pueden estar desactualizadas) y el aviso queda encima. */}
+            {loadError && filteredOrders.length > 0 && (
+                <LoadErrorState message={loadErrorMessage} onRetry={() => void loadOrders()} />
             )}
 
             <DataTable
@@ -631,174 +672,155 @@ export default function Orders() {
                 rows={filteredOrders}
                 rowKey={(o) => o.id}
                 loading={loading}
+                error={loadError && filteredOrders.length === 0 ? loadErrorMessage : null}
+                onRetry={() => void loadOrders()}
                 resetKey={`${statusFilter}|${debouncedSearch}|${dateRange}`}
                 pagination={{ mode: 'server', page, pageSize: ORDERS_PAGE_SIZE, total: totalOrders, onChange: (nextPage) => setPage(nextPage) }}
                 pageSizeOptions={[ORDERS_PAGE_SIZE]}
                 onRowClick={handleViewDetails}
-                empty={<EmptyState title="Sin órdenes" description="No hay órdenes con los filtros seleccionados." />}
+                empty="No hay órdenes con los filtros seleccionados."
             />
 
-            {/* Sidebar Details */}
             <FullScreenModal
                 isOpen={isSidebarOpen}
                 onClose={() => setIsSidebarOpen(false)}
                 title={`Orden #${selectedOrder?.id ?? ''}`}
+                status={selectedOrder ? <Badge tone={getStatusTone(selectedOrder.status)} dot>{getStatusText(selectedOrder.status)}</Badge> : undefined}
+                tabs={selectedOrder ? [
+                    { id: 'info', label: 'Información' },
+                    { id: 'items', label: 'Productos', badge: selectedOrder.items?.length || 0 },
+                ] : undefined}
+                activeTab={activeTab}
+                onTabChange={(id) => setActiveTab(id as 'info' | 'items')}
+                footerStart={orderFooterStart.length > 0 ? orderFooterStart : undefined}
+                footer={orderFooterEnd.length > 0 ? orderFooterEnd : undefined}
             >
-                {selectedOrder && (
-                    <div className="order-detail-content">
-                        {/* Tabs */}
-                        <Tabs
-                            ariaLabel="Detalle de la orden"
-                            active={activeTab}
-                            onChange={(id) => setActiveTab(id as 'info' | 'items')}
-                            tabs={[
-                                { id: 'info', label: 'Información' },
-                                { id: 'items', label: 'Productos', badge: selectedOrder.items?.length || 0 },
-                            ]}
-                        />
-
-                        <div className="tab-content-scroll">
-                            {activeTab === 'info' ? (
-                                <div className="tab-pane animate-fade-in">
-                                    {/* Info Grid */}
-                                    <div className="detail-info-grid">
-                                        <div className="detail-info-item">
-                                            <span className="detail-label">Estado</span>
-                                            <span className="detail-value"><Badge tone={getStatusTone(selectedOrder.status)} dot>{getStatusText(selectedOrder.status)}</Badge></span>
-                                        </div>
-                                        <div className="detail-info-item">
-                                            <span className="detail-label">Estado financiero</span>
-                                            <span className="detail-value">
-                                                {selectedOrder.financialStatus === 'PAID' ? 'Pagada' : selectedOrder.financialStatus === 'PARTIAL' ? 'Pago parcial' : 'Pendiente de pago'}
-                                            </span>
-                                        </div>
-                                        <div className="detail-info-item">
-                                            <span className="detail-label">Fecha y Hora</span>
-                                            <span className="detail-value">
-                                                {new Date(selectedOrder.createdAt).toLocaleString('es-ES', {
-                                                    day: '2-digit',
-                                                    month: 'short',
-                                                    hour: '2-digit',
-                                                    minute: '2-digit'
-                                                })}
-                                            </span>
-                                        </div>
-                                        <div className="detail-info-item">
-                                            <span className="detail-label">Mesa</span>
-                                            <span className="detail-value">{selectedOrder.table ? `Mesa ${selectedOrder.table.number}` : 'Para Llevar'}</span>
-                                        </div>
-                                        <div className="detail-info-item">
-                                            <span className="detail-label">Mesero</span>
-                                            <span className="detail-value" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                {selectedOrder.user?.color && (
-                                                    <span style={{
-                                                        width: '10px', height: '10px', borderRadius: '50%',
-                                                        backgroundColor: selectedOrder.user.color, flexShrink: 0,
-                                                        border: '1px solid var(--ui-border)'
-                                                    }} />
-                                                )}
-                                                {selectedOrder.user?.name || 'Sin asignar'}
-                                            </span>
-                                        </div>
-                                        {selectedOrder.customerName && (
-                                            <div className="detail-info-item customer-item">
-                                                <span className="detail-label">Cliente</span>
-                                                <span className="detail-value">{selectedOrder.customerName}</span>
-                                            </div>
-                                        )}
-                                        {selectedOrder.invoiceNumber && (
-                                            <div className="detail-info-item">
-                                                <span className="detail-label">Estado fiscal</span>
-                                                <span className="detail-value">
-                                                    {selectedOrder.invoiceFiscalStatus === 'CREDITED'
-                                                        ? `Acreditada · ${selectedOrder.fiscalCreditNote?.number || ''}`
-                                                        : selectedOrder.invoiceFiscalStatus === 'CANCELLED'
-                                                            ? 'Anulada'
-                                                            : 'Emitida'}
-                                                </span>
-                                            </div>
-                                        )}
-                                        {selectedOrder.status === 'CANCELLED' && (
-                                            <div className="order-cancel-block">
-                                                {selectedOrder.cancelledBy && (
-                                                    <div className="detail-info-item">
-                                                        <span className="detail-label order-cancel-label">Cancelada por</span>
-                                                        <span className="detail-value">{selectedOrder.cancelledBy.name}</span>
-                                                    </div>
-                                                )}
-                                                {selectedOrder.cancelReason && (
-                                                    <div className="detail-info-item">
-                                                        <span className="detail-label order-cancel-label">Motivo</span>
-                                                        <span className="detail-value">{selectedOrder.cancelReason}</span>
-                                                    </div>
-                                                )}
-                                                {selectedOrder.cancelledAt && (
-                                                    <div className="detail-info-item">
-                                                        <span className="detail-label order-cancel-label">Fecha cancelación</span>
-                                                        <span className="detail-value">{new Date(selectedOrder.cancelledAt).toLocaleString('es-ES')}</span>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        )}
-                                    </div>
-
-                                    {/* Financials Section */}
-                                    <div className="financials-section">
-                                        <div className="fin-row">
-                                            <span>Subtotal</span>
-                                            <span>{formatMoney(Number(selectedOrder.total))}</span>
-                                        </div>
-                                        <div className="fin-row total">
-                                            <span>Total a Pagar</span>
-                                            <span>{formatMoney(Number(selectedOrder.total))}</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            ) : (
-                                <div className="tab-pane animate-fade-in">
-                                    {/* Items */}
-                                    <div className="detail-items">
-                                        {selectedOrder.items?.map((item) => isVoidedOrderLine(item) ? (
-                                            <div key={item.id} className="detail-item-row order-line-voided" title={item.voidReason || undefined}>
-                                                <span className="item-qty">{item.voidedQuantity}x</span>
-                                                <div className="item-info">
-                                                    <div className="item-name order-line-voided-name">{item.menuItem?.name || 'Item eliminado'}</div>
-                                                    {item.voidReason && <div className="item-notes">Anulado: {item.voidReason}</div>}
-                                                </div>
-                                                <span className="order-line-void-badge">Anulado</span>
-                                            </div>
-                                        ) : (
-                                            <div key={item.id || item.menuItemId} className="detail-item-row">
-                                                <span className="item-qty">{item.quantity}x</span>
-                                                <div className="item-info">
-                                                    <div className="item-name">{item.menuItem?.name || 'Item eliminado'}</div>
-                                                    {item.notes && <div className="item-notes">{item.notes}</div>}
-                                                </div>
-                                                <span className="item-price">{formatMoney(Number(item.subtotal))}</span>
-                                                {canVoidLines && isVoidableOrderLine(item) && !orderLineVoidBlocker(selectedOrder) && (
-                                                    <button
-                                                        type="button"
-                                                        className="order-line-void-btn"
-                                                        onClick={() => setVoidLineItemId(item.id)}
-                                                        title="Anular línea y registrar merma"
-                                                    >
-                                                        Anular
-                                                    </button>
-                                                )}
-                                            </div>
-                                        ))}
-                                    </div>
+                {selectedOrder && (activeTab === 'info' ? (
+                    <div className="order-detail">
+                        <dl className="order-detail__list">
+                            <div>
+                                <dt>Estado</dt>
+                                <dd><Badge tone={getStatusTone(selectedOrder.status)} dot>{getStatusText(selectedOrder.status)}</Badge></dd>
+                            </div>
+                            <div>
+                                <dt>Estado financiero</dt>
+                                <dd><Badge tone={financialTone(selectedOrder)}>{financialLabel(selectedOrder)}</Badge></dd>
+                            </div>
+                            <div>
+                                <dt>Fecha y Hora</dt>
+                                <dd>{formatDateTime(selectedOrder.createdAt)}</dd>
+                            </div>
+                            <div>
+                                <dt>Mesa</dt>
+                                <dd>{selectedOrder.table ? `Mesa ${selectedOrder.table.number}` : 'Para Llevar'}</dd>
+                            </div>
+                            <div>
+                                <dt>Mesero</dt>
+                                <dd className="order-detail__waiter">
+                                    {selectedOrder.user?.color && (
+                                        <span
+                                            className="order-detail__waiter-dot"
+                                            style={{ backgroundColor: selectedOrder.user.color }}
+                                            aria-hidden="true"
+                                        />
+                                    )}
+                                    {selectedOrder.user?.name || 'Sin asignar'}
+                                </dd>
+                            </div>
+                            {selectedOrder.customerName && (
+                                <div>
+                                    <dt>Cliente</dt>
+                                    <dd>{selectedOrder.customerName}</dd>
                                 </div>
                             )}
-                        </div>
+                            {selectedOrder.invoiceNumber && (
+                                <div>
+                                    <dt>Estado fiscal</dt>
+                                    <dd>
+                                        {selectedOrder.invoiceFiscalStatus === 'CREDITED'
+                                            ? `Acreditada · ${selectedOrder.fiscalCreditNote?.number || ''}`
+                                            : selectedOrder.invoiceFiscalStatus === 'CANCELLED'
+                                                ? 'Anulada'
+                                                : 'Emitida'}
+                                    </dd>
+                                </div>
+                            )}
+                        </dl>
 
-                        {/* Actions */}
-                        <div className="action-bar-sticky">
-                            {getActionButtons(selectedOrder)}
-                        </div>
+                        {selectedOrder.status === 'CANCELLED' && (selectedOrder.cancelledBy || selectedOrder.cancelReason || selectedOrder.cancelledAt) && (
+                            <section className="order-detail__section" aria-label="Cancelación">
+                                <h3 className="order-detail__heading order-detail__heading--danger">Cancelación</h3>
+                                <dl className="order-detail__list">
+                                    {selectedOrder.cancelledBy && (
+                                        <div>
+                                            <dt>Cancelada por</dt>
+                                            <dd>{selectedOrder.cancelledBy.name}</dd>
+                                        </div>
+                                    )}
+                                    {selectedOrder.cancelReason && (
+                                        <div>
+                                            <dt>Motivo</dt>
+                                            <dd>{selectedOrder.cancelReason}</dd>
+                                        </div>
+                                    )}
+                                    {selectedOrder.cancelledAt && (
+                                        <div>
+                                            <dt>Fecha cancelación</dt>
+                                            <dd>{new Date(selectedOrder.cancelledAt).toLocaleString('es-ES')}</dd>
+                                        </div>
+                                    )}
+                                </dl>
+                            </section>
+                        )}
+
+                        <dl className="order-detail__totals" aria-label="Totales">
+                            <div>
+                                <dt>Subtotal</dt>
+                                <dd>{formatMoney(Number(selectedOrder.total))}</dd>
+                            </div>
+                            <div className="order-detail__grand">
+                                <dt>Total a Pagar</dt>
+                                <dd>{formatMoney(Number(selectedOrder.total))}</dd>
+                            </div>
+                        </dl>
                     </div>
-                )}
+                ) : (
+                    <ul className="order-lines">
+                        {selectedOrder.items?.map((item) => isVoidedOrderLine(item) ? (
+                            <li key={item.id} className="order-lines__row is-voided" title={item.voidReason || undefined}>
+                                <span className="order-lines__qty">{item.voidedQuantity}×</span>
+                                <span className="order-lines__info">
+                                    <span className="order-lines__name">{item.menuItem?.name || 'Item eliminado'}</span>
+                                    {item.voidReason && <small>Anulado: {item.voidReason}</small>}
+                                </span>
+                                <Badge tone="danger">Anulado</Badge>
+                            </li>
+                        ) : (
+                            <li key={item.id || item.menuItemId} className="order-lines__row">
+                                <span className="order-lines__qty">{item.quantity}×</span>
+                                <span className="order-lines__info">
+                                    <span className="order-lines__name">{item.menuItem?.name || 'Item eliminado'}</span>
+                                    {item.notes && <small>{item.notes}</small>}
+                                </span>
+                                <span className="order-lines__amount">{formatMoney(Number(item.subtotal))}</span>
+                                {canVoidLines && isVoidableOrderLine(item) && !orderLineVoidBlocker(selectedOrder) && (
+                                    <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        icon={Ban}
+                                        className="order-lines__void"
+                                        onClick={() => setVoidLineItemId(item.id)}
+                                        title="Anular línea y registrar merma"
+                                    >
+                                        Anular
+                                    </Button>
+                                )}
+                            </li>
+                        ))}
+                    </ul>
+                ))}
             </FullScreenModal>
+
 
             <KitchenLineVoidModal
                 isOpen={voidLineItemId !== null}
@@ -871,10 +893,11 @@ export default function Orders() {
                 dirty={cancelReason.trim().length > 0}
                 footer={({ requestClose }) => (
                     <>
-                        <Button variant="secondary" onClick={requestClose}>Volver</Button>
+                        <Button variant="secondary" onClick={requestClose} disabled={cancelling}>Volver</Button>
                         <Button
                             variant="danger"
                             onClick={() => void handleCancelOrder()}
+                            loading={cancelling}
                             disabled={!cancelReason.trim() || (cancelOrder?.status !== 'OPEN' && !cancelWarehouseId)}
                         >
                             Confirmar cancelación

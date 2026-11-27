@@ -59,8 +59,7 @@ export function coerceMoneyAmount(amount: unknown): number {
 }
 
 export const formatCurrency = (amount: unknown, settings: CurrencySettings = {}): string => {
-    const symbol = settings.currency_symbol || DEFAULT_CURRENCY_SYMBOL;
-    return `${symbol} ${coerceMoneyAmount(amount).toFixed(2)}`;
+    return formatCurrencyGrouped(amount, settings);
 };
 
 /**

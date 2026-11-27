@@ -96,11 +96,11 @@
     grid-template-columns: auto 1fr;
     gap: .15rem .5rem;
     min-width: 0;
-    padding: var(--ui-space-2);
-    border: 1px solid var(--ui-border);
-    border-radius: var(--ui-radius-sm);
-    background: var(--ui-surface-2);
+    padding: 0 var(--ui-space-3);
+    border-left: 1px solid var(--ui-border);
 }
+
+.hr-punch-context > div:first-child { padding-left: 0; border-left: 0; }
 
 .hr-punch-context svg { grid-row: 1 / 3; color: var(--ui-primary); }
 .hr-punch-context span { color: var(--ui-text-muted); font-size: var(--ui-text-xs); }
@@ -150,17 +150,17 @@
 .hr-attendance-blocking.danger { border-color: color-mix(in srgb, var(--ui-danger) 38%, transparent); background: color-mix(in srgb, var(--ui-danger) 8%, transparent); }
 .hr-attendance-blocking.danger > svg { color: var(--ui-danger); }
 
+/* Sub-bloques planos dentro del panel de marcaje: divisor superior, sin caja propia. */
 .hr-camera-capture,
 .hr-location-capture {
     display: grid;
     gap: var(--ui-space-3);
     margin-top: var(--ui-space-4);
-    padding: var(--ui-space-3);
-    border: 1px solid var(--ui-border);
-    border-radius: var(--ui-radius-md);
-    background: var(--ui-surface-2);
+    padding-top: var(--ui-space-4);
+    border-top: 1px solid var(--ui-border);
 }
 
+/* La cámara se pinta siempre con la paleta oscura (clase .dark en el escenario): el video es oscuro en ambos temas. */
 .hr-camera-stage {
     position: relative;
     display: grid;
@@ -171,8 +171,8 @@
     overflow: hidden;
     border: 1px solid var(--ui-border);
     border-radius: var(--ui-radius-md);
-    background: #111827;
-    color: #94a3b8;
+    background: var(--ui-bg);
+    color: var(--ui-text-muted);
 }
 
 .hr-camera-stage video,
@@ -190,9 +190,9 @@
 .hr-camera-face-guide {
     position: absolute;
     inset: 9% 20% 17%;
-    border: 2px dashed rgba(255, 255, 255, .78);
+    border: 2px dashed color-mix(in srgb, var(--ui-text) 78%, transparent);
     border-radius: 48% 48% 44% 44%;
-    box-shadow: 0 0 0 999px rgba(3, 7, 18, .16);
+    box-shadow: 0 0 0 999px color-mix(in srgb, var(--ui-bg) 16%, transparent);
     pointer-events: none;
 }
 
@@ -205,8 +205,8 @@
     justify-content: flex-end;
     gap: .65rem;
     padding: 1rem;
-    color: #fff;
-    background: linear-gradient(180deg, rgba(3, 7, 18, .08) 35%, rgba(3, 7, 18, .88) 100%);
+    color: var(--ui-text);
+    background: linear-gradient(180deg, color-mix(in srgb, var(--ui-bg) 8%, transparent) 35%, color-mix(in srgb, var(--ui-bg) 88%, transparent) 100%);
     pointer-events: none;
 }
 
@@ -231,7 +231,7 @@
 }
 
 .hr-camera-guide__heading span {
-    color: rgba(255, 255, 255, .9);
+    color: color-mix(in srgb, var(--ui-text) 90%, transparent);
     font-size: .82rem;
     line-height: 1.35;
 }
@@ -241,9 +241,9 @@
     place-items: center;
     width: 4.3rem;
     height: 4.3rem;
-    border: 3px solid rgba(255, 255, 255, .88);
+    border: 3px solid color-mix(in srgb, var(--ui-text) 88%, transparent);
     border-radius: 50%;
-    background: rgba(15, 23, 42, .5);
+    background: color-mix(in srgb, var(--ui-bg) 50%, transparent);
     font-size: 2.25rem;
     font-weight: 800;
     line-height: 1;
@@ -256,20 +256,20 @@
     align-self: flex-start;
     padding: .35rem .55rem;
     border-radius: 999px;
-    background: rgba(3, 7, 18, .75);
+    background: color-mix(in srgb, var(--ui-bg) 75%, transparent);
     font-size: .72rem;
 }
 
 .hr-camera-guide__recording > span:last-child {
-    color: rgba(255, 255, 255, .78);
+    color: var(--ui-text-muted);
 }
 
 .hr-camera-recording-dot {
     width: .62rem;
     height: .62rem;
     border-radius: 50%;
-    background: #ef4444;
-    box-shadow: 0 0 0 4px rgba(239, 68, 68, .2);
+    background: var(--ui-danger);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--ui-danger) 20%, transparent);
     animation: hr-camera-recording-pulse 1s ease-in-out infinite;
 }
 
@@ -282,11 +282,11 @@
 .hr-camera-guide__progress span {
     height: .28rem;
     border-radius: 999px;
-    background: rgba(255, 255, 255, .3);
+    background: color-mix(in srgb, var(--ui-text) 30%, transparent);
 }
 
 .hr-camera-guide__progress span.complete {
-    background: #34d399;
+    background: var(--ui-success);
 }
 
 @keyframes hr-camera-recording-pulse {
@@ -351,13 +351,13 @@
 .hr-punch-result {
     display: flex;
     flex-direction: column;
-    gap: var(--spacing-md);
+    gap: var(--ui-space-3);
 }
 
 .hr-punch-result-heading {
     display: flex;
     align-items: flex-start;
-    gap: var(--spacing-sm);
+    gap: var(--ui-space-2);
 }
 
 .hr-punch-result-heading > svg { flex: 0 0 auto; }
@@ -367,41 +367,40 @@
 .hr-punch-result h2,
 .hr-punch-result p { margin: 0; }
 .hr-punch-result p { color: var(--ui-text-muted); }
-.hr-punch-result-heading h2 { font-size: var(--font-size-xl); }
+.hr-punch-result-heading h2 { font-size: var(--ui-text-lg); }
 .hr-punch-result-heading p { margin-top: .2rem; line-height: 1.45; }
 
 .hr-attendance-checks {
     display: grid;
     width: 100%;
-    gap: var(--spacing-sm);
+    gap: var(--ui-space-2);
     margin: 0;
 }
 
 .hr-attendance-checks > div {
     display: grid;
     grid-template-columns: minmax(150px, .42fr) 1fr;
-    gap: var(--spacing-sm);
-    padding: var(--spacing-md);
-    border: 1px solid var(--ui-border);
+    gap: var(--ui-space-2);
+    padding: var(--ui-space-3);
+    border: 0;
     border-left: 3px solid var(--ui-text-muted);
-    border-radius: var(--radius-md);
-    background: var(--ui-bg);
+    border-bottom: 1px solid var(--ui-border);
     text-align: left;
 }
 
-.hr-attendance-checks .ok { border-color: var(--ui-success); }
-.hr-attendance-checks .warning { border-color: var(--ui-warning); }
-.hr-attendance-checks .danger { border-color: var(--ui-danger); }
+.hr-attendance-checks .ok { border-left-color: var(--ui-success); }
+.hr-attendance-checks .warning { border-left-color: var(--ui-warning); }
+.hr-attendance-checks .danger { border-left-color: var(--ui-danger); }
 .hr-attendance-checks dt {
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
-    gap: var(--spacing-xs);
+    gap: var(--ui-space-1);
     font-weight: 750;
 }
 .hr-attendance-checks dt small {
     padding: 2px 6px;
-    border-radius: var(--radius-full);
+    border-radius: 999px;
     background: color-mix(in srgb, currentColor 12%, transparent);
     color: var(--ui-text-muted);
     font-size: .65rem;
@@ -419,30 +418,30 @@
     color: var(--ui-text-muted);
     line-height: 1.4;
 }
-.hr-attendance-checks dd strong { color: var(--ui-text); font-size: var(--font-size-sm); }
-.hr-attendance-checks dd span { font-size: var(--font-size-sm); }
+.hr-attendance-checks dd strong { color: var(--ui-text); font-size: var(--ui-text-sm); }
+.hr-attendance-checks dd span { font-size: var(--ui-text-sm); }
 .hr-attendance-checks dd small { color: var(--ui-text-muted); font-variant-numeric: tabular-nums; }
 
 .hr-checks-passed {
     display: flex;
     align-items: center;
-    gap: var(--spacing-xs);
+    gap: var(--ui-space-1);
     color: var(--ui-success) !important;
-    font-size: var(--font-size-sm);
+    font-size: var(--ui-text-sm);
 }
 
 .hr-result-technical {
     width: 100%;
     color: var(--ui-text-muted);
-    font-size: var(--font-size-xs);
+    font-size: var(--ui-text-xs);
 }
 .hr-result-technical summary { width: fit-content; cursor: pointer; font-weight: 700; }
-.hr-result-technical code { display: block; margin-top: var(--spacing-xs); overflow-wrap: anywhere; }
+.hr-result-technical code { display: block; margin-top: var(--ui-space-1); overflow-wrap: anywhere; }
 
 .hr-result-actions {
     display: flex;
     justify-content: flex-end;
-    gap: var(--spacing-sm);
+    gap: var(--ui-space-2);
     width: 100%;
 }
 
@@ -457,20 +456,17 @@
 }
 
 @media (max-width: 480px) {
-    
     .hr-punch-actions,
     .hr-punch-evidence,
-    .hr-punch-result { padding: var(--spacing-md); }
-    .hr-punch-result { gap: var(--spacing-sm); }
+    .hr-punch-result { padding: var(--ui-space-3); }
+    .hr-punch-result { gap: var(--ui-space-2); }
     .hr-punch-result-heading > svg { width: 30px; height: 30px; }
-    .hr-punch-result-heading h2 { font-size: var(--font-size-lg); }
-    .hr-attendance-checks { gap: var(--spacing-xs); }
-    .hr-attendance-checks > div { grid-template-columns: 1fr; padding: var(--spacing-sm); }
+    .hr-punch-result-heading h2 { font-size: var(--ui-text-lg); }
+    .hr-attendance-checks { gap: var(--ui-space-1); }
+    .hr-attendance-checks > div { grid-template-columns: 1fr; padding: var(--ui-space-2); }
     .hr-result-actions { align-items: stretch; flex-direction: column; }
     .hr-result-actions .ui-button { width: 100%; }
-    .hr-camera-capture,
-    .hr-location-capture { padding: var(--spacing-sm); }
-    .hr-camera-guide { padding: var(--spacing-sm); }
+    .hr-camera-guide { padding: var(--ui-space-2); }
     .hr-camera-guide__heading strong { font-size: 0.95rem; }
     .hr-camera-guide__heading span { font-size: 0.75rem; }
     .hr-attendance-blocking .ui-button { width: 100%; }
@@ -484,12 +480,12 @@
     justify-content: center;
     align-items: center;
     text-align: center;
-    background: rgba(3, 7, 18, .58);
+    background: color-mix(in srgb, var(--ui-bg) 58%, transparent);
     backdrop-filter: blur(2px);
 }
 
-.hr-camera-guide.phase-turn_countdown { background: rgba(2, 132, 199, .68); }
-.hr-camera-guide.phase-complete { background: linear-gradient(180deg, rgba(6, 78, 59, .08) 30%, rgba(6, 78, 59, .9) 100%); }
+.hr-camera-guide.phase-turn_countdown { background: color-mix(in srgb, var(--ui-primary) 40%, color-mix(in srgb, var(--ui-bg) 80%, transparent)); }
+.hr-camera-guide.phase-complete { background: linear-gradient(180deg, color-mix(in srgb, var(--ui-success) 8%, transparent) 30%, color-mix(in srgb, var(--ui-success) 55%, var(--ui-bg)) 100%); }
 
 .hr-camera-guide.phase-front_countdown .hr-camera-guide__heading,
 .hr-camera-guide.phase-turn_countdown .hr-camera-guide__heading { flex-direction: column; }

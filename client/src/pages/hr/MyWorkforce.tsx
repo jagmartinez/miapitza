@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useState, type ReactNode, useId } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { formatHrNumber } from '../../utils/hrDisplay';
 import {
@@ -6,17 +6,15 @@ import {
   CalendarPlus,
   Clock3,
   ClipboardList as FilePenLine,
+  Pencil,
   Plus,
   RefreshCw,
 } from 'lucide-react';
-import {
-  Button, DataTable, DateInput, EmptyState, FormSection, FullScreenModal, LoadErrorState, PageContent, PageHeader, StatCard, TableToolbar, Tabs,
-  Textarea,
-} from '@/ui';
+import { Button, DataTable, DateInput, EmptyState, Field, FormSection, FullScreenModal, IconButton, LoadErrorState, PageContent, PageHeader, TableToolbar, Tabs, Textarea } from '@/ui';
 import form from '../../components/hr/hrForm.module.css';
 import HrLoading from '../../components/hr/HrLoading';
 import MyHrNav from '../../components/hr/MyHrNav';
-import HrModalFormShell from '../../components/hr/HrModalFormShell';
+import HrModalFormShell, { HrModalFooterSlot } from '../../components/hr/HrModalFormShell';
 import AttendanceCorrectionForm from '../../components/hr/AttendanceCorrectionForm';
 import LeaveRequestForm from '../../components/hr/LeaveRequestForm';
 import OnlineOnlyNotice from '../../components/hr/OnlineOnlyNotice';
@@ -28,7 +26,6 @@ import {
   getWorkforceErrorMessage,
   workforceClient,
 } from '../../components/hr/workforceClient';
-import { selectVacationBalance } from '../../components/hr/vacationBalance';
 import { useAppToast } from '../../context/ToastContext';
 import type {
   HrAttendanceCorrection,
@@ -76,6 +73,7 @@ type CancelPanel =
 type WorkforceWorkspace = 'ATTENDANCE' | 'REQUESTS' | 'BALANCES';
 
 export default function MyWorkforce() {
+  const fid = useId();
   const [searchParams] = useSearchParams();
   const requestedTab = searchParams.get('tab')?.toUpperCase();
   const online = useWorkforceOnline();
@@ -242,16 +240,6 @@ export default function MyWorkforce() {
     setCancelReason('');
   };
 
-  const workflowItems = [
-    ...workforce.corrections,
-    ...workforce.overtimeRequests,
-    ...workforce.leaveRequests,
-  ];
-  const pendingCount = workflowItems.filter((item) => item.status === 'DRAFT' || item.status === 'PENDING').length;
-  const approvedCount = workflowItems.filter((item) => item.status === 'APPROVED' || item.status === 'APPLIED').length;
-  const rejectedCount = workflowItems.filter((item) => item.status === 'REJECTED' || item.status === 'CANCELLED').length;
-
-  const vacation = selectVacationBalance(workforce.vacationBalances);
   const ready = !loading && !error;
   const serverTimeLabel = workforce.serverTime
     ? new Intl.DateTimeFormat('es-NI', {
@@ -291,49 +279,20 @@ export default function MyWorkforce() {
         <div className={`${form.alertWarning} ${form.actions}`} role="status">
           <AlertTriangle size={16} aria-hidden="true" />
           <span>{partialWarning}</span>
-          <Button size="sm" variant="ghost" icon={RefreshCw} onClick={() => void load()}>Reintentar sección</Button>
+          <Button variant="ghost" icon={RefreshCw} onClick={() => void load()}>Reintentar sección</Button>
         </div>
       )}
 
-      {ready && (
-        <section className={form.kpis} aria-label="Resumen de mi gestión laboral">
-          <StatCard
-            tone={vacation ? 'primary' : 'neutral'}
-            label="Saldo de vacaciones"
-            value={vacation ? `${formatHrNumber(vacation.available)} ${vacation.unit.toLowerCase()}` : 'Sin saldo'}
-            context={vacation ? `Al ${vacation.asOf}` : 'Disponibilidad emitida por el servidor'}
-          />
-          <StatCard
-            tone={pendingCount > 0 ? 'warning' : 'neutral'}
-            label="En espera"
-            value={String(pendingCount)}
-            context={`Borradores o pendientes · Aprobadas ${approvedCount} · Rechazadas o canceladas ${rejectedCount}`}
-            action={pendingCount > 0 ? { label: 'Ver solicitudes', onClick: () => setActiveWorkspace('REQUESTS') } : undefined}
-          />
-          {workforce.incidents.length > 0 && (
-            <StatCard
-              tone="danger"
-              label="Incidencias"
-              value={String(workforce.incidents.length)}
-              context="En el rango consultado; revisa el motivo antes de pedir corrección."
-              action={{ label: 'Ver asistencia', onClick: () => setActiveWorkspace('ATTENDANCE') }}
-            />
-          )}
-        </section>
-      )}
-
-      {ready && (
-        <Tabs
-          ariaLabel="Bandejas de mi gestión laboral"
-          active={activeWorkspace}
-          onChange={(id) => setActiveWorkspace(id as WorkforceWorkspace)}
-          tabs={[
-            { id: 'ATTENDANCE', label: 'Asistencia', badge: summaries.length + workforce.incidents.length },
-            { id: 'REQUESTS', label: 'Solicitudes', badge: workforce.overtimeRequests.length + workforce.leaveRequests.length },
-            { id: 'BALANCES', label: 'Vacaciones', badge: workforce.vacationBalances.length },
-          ]}
-        />
-      )}
+      <Tabs
+        ariaLabel="Bandejas de mi gestión laboral"
+        active={activeWorkspace}
+        onChange={(id) => setActiveWorkspace(id as WorkforceWorkspace)}
+        tabs={[
+          { id: 'ATTENDANCE', label: 'Asistencia', badge: ready ? summaries.length + workforce.incidents.length : undefined },
+          { id: 'REQUESTS', label: 'Solicitudes', badge: ready ? workforce.overtimeRequests.length + workforce.leaveRequests.length : undefined },
+          { id: 'BALANCES', label: 'Vacaciones', badge: ready ? workforce.vacationBalances.length : undefined },
+        ]}
+      />
 
       <TableToolbar
         actions={(
@@ -360,26 +319,25 @@ export default function MyWorkforce() {
                   rows={summaries}
                   rowKey={(summary) => summary.id}
                   pagination={{ mode: 'client' }}
-                  minWidth="64rem"
                   toolbar={(
-                    <TableToolbar actions={<Button variant="primary" size="sm" icon={Plus} onClick={() => setPanel({ kind: 'overtime' })} disabled={!online}>Horas extra</Button>}>
+                    <TableToolbar actions={<Button variant="primary" icon={Plus} onClick={() => setPanel({ kind: 'overtime' })} disabled={!online}>Horas extra</Button>}>
                       <span className={form.help}>Minutos calculados por el servidor, no por este dispositivo.</span>
                     </TableToolbar>
                   )}
                   empty={<EmptyState icon={Clock3} title="Sin resúmenes en el rango." />}
                   columns={[
-                    { key: 'date', header: 'Fecha', render: (summary) => <span className={form.cellStack}><span className={form.cellTitle}>{summary.date}</span><span className={form.cellSub}>{summary.branch?.name ?? 'Sin sucursal'}</span></span> },
+                    { key: 'date', header: 'Fecha', type: 'date', render: (summary) => <span className={form.cellStack}><span className={form.cellTitle}>{summary.date}</span><span className={form.cellSub}>{summary.branch?.name ?? 'Sin sucursal'}</span></span> },
                     { key: 'ordinary', header: 'Ordinarios', type: 'number', render: (summary) => `${summary.ordinaryMinutes} min` },
                     { key: 'break', header: 'Descanso', type: 'number', render: (summary) => `${summary.breakMinutes} min` },
                     { key: 'late', header: 'Tardanza', type: 'number', render: (summary) => <span className={summary.lateMinutes > 0 ? form.cellWarning : undefined}>{summary.lateMinutes} min</span> },
                     { key: 'early', header: 'Salida temprana', type: 'number', render: (summary) => <span className={summary.earlyDepartureMinutes > 0 ? form.cellWarning : undefined}>{summary.earlyDepartureMinutes} min</span> },
                     { key: 'extra', header: 'Extra (aprobado / candidato)', type: 'number', render: (summary) => `${summary.approvedOvertimeMinutes ?? 0} / ${summary.candidateOvertimeMinutes} min` },
-                    { key: 'status', header: 'Periodo', render: (summary) => (summary.periodStatus ? <WorkforceStatusPill status={summary.periodStatus} /> : <span className={form.cellSub}>Revisión {summary.sourceRevision ?? '—'}</span>) },
+                    { key: 'status', header: 'Periodo', type: 'status', render: (summary) => (summary.periodStatus ? <WorkforceStatusPill status={summary.periodStatus} /> : <span className={form.cellSub}>Revisión {summary.sourceRevision ?? '—'}</span>) },
                     {
-                      key: 'actions', header: 'Acciones', type: 'actions', width: '13rem', render: (summary) => (
+                      key: 'actions', header: 'Acciones', type: 'actions', width: '100px', render: (summary) => (
                         <div className={form.rowActions}>
-                          <Button size="sm" variant="ghost" onClick={() => setPanel({ kind: 'correction', summary })} disabled={!online}>Corregir</Button>
-                          <Button size="sm" onClick={() => setPanel({ kind: 'overtime', summary })} disabled={!online}>Solicitar extra</Button>
+                          <IconButton size="sm" icon={Pencil} tooltip="Corregir" label="Corregir" onClick={() => setPanel({ kind: 'correction', summary })} disabled={!online} />
+                          <IconButton size="sm" icon={Clock3} tooltip="Horas extra" label="Solicitar extra" onClick={() => setPanel({ kind: 'overtime', summary })} disabled={!online} />
                         </div>
                       ),
                     },
@@ -506,7 +464,7 @@ export default function MyWorkforce() {
                         `${entry.type} · ${formatHrNumber(entry.amount)} ${entry.unit}`,
                         entry.reason,
                         `${entry.effectiveDate} · ${entry.reference ?? `#${entry.id}`}`,
-                        entry.resultingBalance != null ? <strong>{entry.resultingBalance} {entry.unit}</strong> : null,
+                        entry.resultingBalance != null ? <strong className="hr-money">{formatHrNumber(entry.resultingBalance)} {entry.unit}</strong> : null,
                       ))}
                     </ul>
                   )}
@@ -518,6 +476,7 @@ export default function MyWorkforce() {
       )}
 
       <FullScreenModal
+        footer={<HrModalFooterSlot />}
         isOpen={Boolean(panel)}
         onClose={() => !saving && setPanel(null)}
         breadcrumb={['Mi RH', 'Gestión laboral']}
@@ -566,6 +525,7 @@ export default function MyWorkforce() {
       </FullScreenModal>
 
       <FullScreenModal
+        footer={<HrModalFooterSlot />}
         isOpen={Boolean(cancelPanel)}
         onClose={() => !saving && setCancelPanel(null)}
         title="Cancelar solicitud"
@@ -583,22 +543,23 @@ export default function MyWorkforce() {
               <Button type="button" variant="ghost" onClick={() => setCancelPanel(null)}>
                 Volver
               </Button>
-              <Button type="submit" variant="danger" disabled={!online || saving || !cancelReason.trim()}>
-                {saving ? 'Cancelando…' : 'Confirmar cancelación'}
+              <Button loading={saving} type="submit" variant="danger" disabled={!online || saving || !cancelReason.trim()}>
+                Confirmar cancelación
               </Button>
             </>
           }
         >
-          <label className="span-full">
-            Razón de cancelación
-            <Textarea
-              rows={5}
-              maxLength={700}
-              value={cancelReason}
-              onChange={(event) => setCancelReason(event.target.value)}
-              required
-            />
-          </label>
+          <div className="span-full">
+            <Field label="Razón de cancelación" htmlFor={`${fid}-razon-de-cancelacion`}>
+              <Textarea id={`${fid}-razon-de-cancelacion`}
+                rows={5}
+                maxLength={700}
+                value={cancelReason}
+                onChange={(event) => setCancelReason(event.target.value)}
+                required
+              />
+            </Field>
+          </div>
         </HrModalFormShell>
       </FullScreenModal>
     </PageContent>

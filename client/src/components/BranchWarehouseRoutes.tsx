@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type MutableRefObject } from 'react';
 import { Plus, Trash2, Route } from 'lucide-react';
 import api, { categoriesAPI, productsAPI } from '../services/api';
-import { AppSelect, Button } from '@/ui';
+import { AppSelect, Button, IconButton, Skeleton } from '@/ui';
+import s from './BranchWarehouseRoutes.module.css';
 import { getApiErrorMessage } from '../utils/apiError';
 import { buildWarehouseRoutesPayload, type WarehouseRouteDraft } from '../utils/warehouseRoutes';
 
@@ -24,6 +25,14 @@ type Props = {
     branchId: number;
     warehouses: Array<{ id: number; name: string; code?: string; type?: 'CENTRAL' | 'BRANCH' }>;
     canEdit: boolean;
+    /** El modal contenedor guarda las rutas desde su pie: expone save() y dirty. */
+    controllerRef?: MutableRefObject<WarehouseRoutesController | null>;
+};
+
+export type WarehouseRoutesController = {
+    dirty: boolean;
+    /** Devuelve false si la validación o la API fallaron (el mensaje queda visible). */
+    save: () => Promise<boolean>;
 };
 
 let draftSeq = 0;
@@ -36,12 +45,11 @@ const toDrafts = (rows: RouteRow[]): WarehouseRouteDraft[] => rows.map((row) => 
     warehouseId: row.warehouseId,
 }));
 
-export default function BranchWarehouseRoutes({ branchId, warehouses, canEdit }: Props) {
+export default function BranchWarehouseRoutes({ branchId, warehouses, canEdit, controllerRef }: Props) {
     const [drafts, setDrafts] = useState<WarehouseRouteDraft[]>([]);
     const [categories, setCategories] = useState<Option[]>([]);
     const [products, setProducts] = useState<Option[]>([]);
     const [loading, setLoading] = useState(true);
-    const [saving, setSaving] = useState(false);
     const [message, setMessage] = useState<{ type: 'error' | 'ok'; text: string } | null>(null);
     const [dirty, setDirty] = useState(false);
 
@@ -83,24 +91,29 @@ export default function BranchWarehouseRoutes({ branchId, warehouses, canEdit }:
         setMessage(null);
     };
 
-    const save = async () => {
+    const save = async (): Promise<boolean> => {
         const payload = buildWarehouseRoutesPayload(drafts);
         if ('error' in payload) {
             setMessage({ type: 'error', text: payload.error });
-            return;
+            return false;
         }
-        setSaving(true);
         try {
             const res = await api.put(`/branches/${branchId}/warehouse-routes`, payload);
             setDrafts(toDrafts((res.data?.data ?? []) as RouteRow[]));
             setDirty(false);
             setMessage({ type: 'ok', text: 'Rutas de bodega guardadas' });
+            return true;
         } catch (error) {
             setMessage({ type: 'error', text: getApiErrorMessage(error, 'No se pudieron guardar las rutas de bodega') });
-        } finally {
-            setSaving(false);
+            return false;
         }
     };
+
+    useEffect(() => {
+        if (!controllerRef) return undefined;
+        controllerRef.current = { dirty, save };
+        return () => { controllerRef.current = null; };
+    });
 
     const kindOptions: Array<{ value: 'CATEGORY' | 'PRODUCT'; label: string }> = [
         { value: 'CATEGORY', label: 'Categoría' },
@@ -108,96 +121,98 @@ export default function BranchWarehouseRoutes({ branchId, warehouses, canEdit }:
     ];
 
     return (
-        <div className="modal-input-group" data-testid="branch-warehouse-routes">
-            <div className="modal-section-header">
-                <Route size={18} />
-                <h3>Bodega de consumo por ingrediente</h3>
-            </div>
-            <small style={{ color: 'var(--ui-text-muted)' }}>
+        <section className={s.block} data-testid="branch-warehouse-routes" aria-labelledby="branch-warehouse-routes-title">
+            <header className={s.head}>
+                <Route size={16} aria-hidden="true" />
+                <h4 id="branch-warehouse-routes-title" className={s.title}>Bodega de consumo por ingrediente</h4>
+            </header>
+            <p className={s.muted}>
                 Las ventas descuentan cada insumo de la bodega indicada (p. ej. bebidas de Barra, alimentos de Cocina).
                 Una regla de producto tiene prioridad sobre la de su categoría; sin regla se usa la bodega de venta.
-            </small>
+            </p>
             {loading ? (
-                <small>Cargando rutas…</small>
+                <div className={s.rules} role="status" aria-label="Cargando rutas…">
+                    <Skeleton height={40} />
+                    <Skeleton height={40} />
+                </div>
             ) : (
                 <>
                     {warehouseOptions.length < 2 && (
-                        <small style={{ color: 'var(--ui-text-muted)' }}>
+                        <p className={s.muted}>
                             Esta sucursal tiene una sola bodega; las rutas solo aplican con varias bodegas de sucursal.
-                        </small>
+                        </p>
                     )}
-                    {drafts.length === 0 && <small>Sin reglas: todo se consume de la bodega de venta.</small>}
-                    {drafts.map((draft, index) => {
-                        const targets = draft.kind === 'PRODUCT' ? products : categories;
-                        return (
-                            <div
-                                key={draft.key}
-                                style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 7rem) minmax(0, 1fr) minmax(0, 1fr) auto', gap: '0.5rem', alignItems: 'end' }}
-                            >
-                                <AppSelect<'CATEGORY' | 'PRODUCT'>
-                                    aria-label={`Tipo de regla ${index + 1}`}
-                                    options={kindOptions}
-                                    value={draft.kind}
-                                    onChange={(value) => update(draft.key, { kind: value ?? 'CATEGORY', targetId: null })}
-                                    isClearable={false}
-                                    isDisabled={!canEdit}
-                                />
-                                <AppSelect<number>
-                                    aria-label={`${draft.kind === 'PRODUCT' ? 'Producto' : 'Categoría'} de la regla ${index + 1}`}
-                                    placeholder={draft.kind === 'PRODUCT' ? 'Producto…' : 'Categoría…'}
-                                    options={targets}
-                                    value={targets.find((option) => option.value === draft.targetId)?.value ?? null}
-                                    onChange={(value) => update(draft.key, { targetId: value ?? null })}
-                                    isDisabled={!canEdit}
-                                />
-                                <AppSelect<number>
-                                    aria-label={`Bodega de la regla ${index + 1}`}
-                                    placeholder="Bodega…"
-                                    options={warehouseOptions}
-                                    value={warehouseOptions.find((option) => option.value === draft.warehouseId)?.value ?? null}
-                                    onChange={(value) => update(draft.key, { warehouseId: value ?? null })}
-                                    isDisabled={!canEdit}
-                                />
-                                {canEdit && (
-                                    <Button
-                                        type="button"
-                                        variant="ghost"
-                                        aria-label={`Quitar regla ${index + 1}`}
-                                        onClick={() => {
-                                            setDrafts((current) => current.filter((candidate) => candidate.key !== draft.key));
-                                            setDirty(true);
-                                        }}
-                                    >
-                                        <Trash2 size={16} />
-                                    </Button>
-                                )}
-                            </div>
-                        );
-                    })}
+                    {drafts.length === 0 ? (
+                        <p className={s.muted}>Sin reglas: todo se consume de la bodega de venta.</p>
+                    ) : (
+                        <ul className={s.rules}>
+                            {drafts.map((draft, index) => {
+                                const targets = draft.kind === 'PRODUCT' ? products : categories;
+                                return (
+                                    <li key={draft.key} className={s.rule}>
+                                        <AppSelect<'CATEGORY' | 'PRODUCT'>
+                                            aria-label={`Tipo de regla ${index + 1}`}
+                                            options={kindOptions}
+                                            value={draft.kind}
+                                            onChange={(value) => update(draft.key, { kind: value ?? 'CATEGORY', targetId: null })}
+                                            isClearable={false}
+                                            isSearchable={false}
+                                            isDisabled={!canEdit}
+                                        />
+                                        <AppSelect<number>
+                                            aria-label={`${draft.kind === 'PRODUCT' ? 'Producto' : 'Categoría'} de la regla ${index + 1}`}
+                                            placeholder={draft.kind === 'PRODUCT' ? 'Producto…' : 'Categoría…'}
+                                            options={targets}
+                                            value={targets.find((option) => option.value === draft.targetId)?.value ?? null}
+                                            onChange={(value) => update(draft.key, { targetId: value ?? null })}
+                                            isDisabled={!canEdit}
+                                        />
+                                        <AppSelect<number>
+                                            aria-label={`Bodega de la regla ${index + 1}`}
+                                            placeholder="Bodega…"
+                                            options={warehouseOptions}
+                                            value={warehouseOptions.find((option) => option.value === draft.warehouseId)?.value ?? null}
+                                            onChange={(value) => update(draft.key, { warehouseId: value ?? null })}
+                                            isDisabled={!canEdit}
+                                        />
+                                        {canEdit && (
+                                            <IconButton
+                                                icon={Trash2}
+                                                tone="danger"
+                                                label={`Quitar regla ${index + 1}`}
+                                                tooltip="Quitar regla"
+                                                onClick={() => {
+                                                    setDrafts((current) => current.filter((candidate) => candidate.key !== draft.key));
+                                                    setDirty(true);
+                                                }}
+                                            />
+                                        )}
+                                    </li>
+                                );
+                            })}
+                        </ul>
+                    )}
                     {canEdit && (
-                        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                        <div className={s.actions}>
                             <Button
-                                type="button"
                                 variant="secondary"
+                                icon={Plus}
                                 onClick={() => {
                                     setDrafts((current) => [...current, { key: nextKey(), kind: 'CATEGORY', targetId: null, warehouseId: null }]);
                                     setDirty(true);
                                 }}
                             >
-                                <Plus size={16} /> Agregar regla
-                            </Button>
-                            <Button type="button" variant="primary" onClick={() => void save()} disabled={saving || !dirty}>
-                                {saving ? 'Guardando…' : 'Guardar rutas'}
+                                Agregar regla
                             </Button>
                         </div>
                     )}
                 </>
             )}
             {message && (
-                <small role={message.type === 'error' ? 'alert' : 'status'} style={{ color: message.type === 'error' ? 'var(--ui-danger)' : 'var(--ui-success)' }}>
+                <p role={message.type === 'error' ? 'alert' : 'status'} className={message.type === 'error' ? s.error : s.ok}>
                     {message.text}
-                </small>
+                </p>
             )}
-        </div>
+        </section>
     );
 }

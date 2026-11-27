@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { AppSelect, Button, Field, FullScreenModal } from '@/ui';
+import { AppSelect, Button, Field, FullScreenModal, LoadErrorState, Spinner, formatNumber } from '@/ui';
 import api from '../services/api';
 import { Printer } from 'lucide-react';
 import { escapeHtml } from '../utils/escapeHtml';
@@ -57,8 +57,8 @@ interface KitchenTicketData {
   notes?: string;
 }
 
-/** Printed tickets keep the plain 2-decimal format (no thousands separator). */
-const money2 = (n: number) => n.toFixed(2);
+/** Printed tickets: 2 decimals with thousands separators. */
+const money2 = (n: number) => formatNumber(n);
 
 function ticketLoadErrorMessage(err: unknown): string {
   if (typeof err === 'object' && err !== null && 'response' in err) {
@@ -333,65 +333,46 @@ const TicketPrintModal: React.FC<TicketPrintModalProps> = ({
       isOpen={isOpen}
       onClose={onClose}
       title={type === 'kitchen' ? 'Ticket de Cocina' : 'Ticket de Cliente'}
-      footer={(
+      footer={({ requestClose }) => (
         <>
-          <Button variant="secondary" onClick={onClose}>Cancelar</Button>
-          <Button variant="primary" onClick={handlePrint} disabled={loading || !ticketData || !!loadError}>
-            <Printer size={18} aria-hidden="true" /> Imprimir
+          <Button variant="secondary" onClick={requestClose}>Cancelar</Button>
+          <Button variant="primary" icon={Printer} onClick={handlePrint} disabled={loading || !ticketData || !!loadError}>
+            Imprimir
           </Button>
         </>
       )}
     >
       <div className="ticket-print-content">
-        <div className="ticket-print-body">
-          {loadError && (
-            <div style={{ color: 'var(--ui-danger)', padding: '0.75rem', marginBottom: '1rem', borderRadius: '8px', background: 'var(--ui-danger-soft)' }}>
-              {loadError}
-            </div>
-          )}
-          {printError && (
-            <div style={{ color: 'var(--ui-danger)', padding: '0.75rem', marginBottom: '1rem', borderRadius: '8px', background: 'var(--ui-danger-soft)' }}>
-              {printError}
-            </div>
-          )}
-          {loading ? (
-            <div style={{ textAlign: 'center', padding: '2rem' }}>
-              Cargando ticket...
-            </div>
-          ) : (
-            <>
-              <Field label="Ancho de Impresora" htmlFor="ticket-width-1">
-                  <AppSelect
-                      inputId="ticket-width-1"
-                    options={[
-                      { value: '58', label: '58mm (Pequeña)' },
-                      { value: '80', label: '80mm (Estándar)' }
-                    ]}
-                    value={String(printerWidth)}
-                    isClearable={false}
-                    onChange={(option) => setPrinterWidth(parseInt(option || '80', 10) as 58 | 80)}
-                  />
-              </Field>
-
-              <div
-                style={{
-                  backgroundColor: '#fff',
-                  color: '#000',
-                  padding: '1rem',
-                  borderRadius: '8px',
-                  fontFamily: "'Courier New', monospace",
-                  fontSize: '12px',
-                  maxHeight: '400px',
-                  overflowY: 'auto',
-                  border: '1px solid #ddd'
-                }}
-                dangerouslySetInnerHTML={{
-                  __html: type === 'kitchen' ? renderKitchenTicket() : renderCustomerTicket()
-                }}
+        {loadError && <LoadErrorState message={loadError} onRetry={() => void loadTicketData()} />}
+        {printError && <p className="ticket-print-error" role="alert">{printError}</p>}
+        {loading ? (
+          <div className="ticket-print-loading">
+            <Spinner size={20} label="Cargando ticket" /> Cargando ticket...
+          </div>
+        ) : (
+          <>
+            <Field label="Ancho de Impresora" htmlFor="ticket-width-1">
+              <AppSelect
+                inputId="ticket-width-1"
+                options={[
+                  { value: '58', label: '58mm (Pequeña)' },
+                  { value: '80', label: '80mm (Estándar)' }
+                ]}
+                value={String(printerWidth)}
+                isClearable={false}
+                onChange={(option) => setPrinterWidth(parseInt(option || '80', 10) as 58 | 80)}
               />
-            </>
-          )}
-        </div>
+            </Field>
+
+            {/* Vista previa en papel: siempre clara (colores del sistema), igual que el ticket impreso. */}
+            <div
+              className="ticket-print-preview"
+              dangerouslySetInnerHTML={{
+                __html: type === 'kitchen' ? renderKitchenTicket() : renderCustomerTicket()
+              }}
+            />
+          </>
+        )}
       </div>
     </FullScreenModal>
   );

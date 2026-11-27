@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { branchesAPI, hrAPI, type BranchGeofencePayload } from '../services/api';
-import BranchWarehouseRoutes from '../components/BranchWarehouseRoutes';
-import { Plus, Phone, Edit2, Trash2, Store, LocateFixed, Search } from 'lucide-react';
+import BranchWarehouseRoutes, { type WarehouseRoutesController } from '../components/BranchWarehouseRoutes';
+import { Plus, Phone, Pencil, Power, Store, LocateFixed, Search } from 'lucide-react';
 import type { Branch } from '../types';
 import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
@@ -13,7 +13,7 @@ import { MIN_LOCATION_ACCURACY_M } from '../components/hr/attendanceSettingsRule
 import styles from './catalog.module.css';
 import {
     AppSelect, Badge, Button, DataTable, EmptyState, Field, FormGrid, FormSection, FullScreenModal, IconButton, Input,
-    LoadErrorState, PageContent, PageHeader, SegmentedControl, Switch, TableToolbar, Textarea, type Column,
+    LoadErrorState, PageContent, PageHeader, Switch, TableToolbar, Tabs, Textarea, type Column,
 } from '@/ui';
 
 type StatusFilter = 'ALL' | 'ACTIVE' | 'INACTIVE';
@@ -97,6 +97,8 @@ export default function Branches() {
     useEffect(() => {
         void loadData();
     }, [loadData]);
+
+    const routesControllerRef = useRef<WarehouseRoutesController | null>(null);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -209,6 +211,14 @@ export default function Branches() {
             }
 
             if (!savedBranch?.id) throw new Error('La API no devolvió la sucursal guardada');
+
+            const routes = routesControllerRef.current;
+            if (routes?.dirty && !(await routes.save())) {
+                await loadData();
+                setActiveTab('general');
+                showError('La sucursal se guardó, pero las rutas de bodega no. Corrígelas y vuelve a guardar.');
+                return;
+            }
 
             await loadData();
             closeModal();
@@ -362,6 +372,7 @@ export default function Branches() {
         {
             key: 'status',
             header: 'Estado',
+            type: 'status',
             render: (b) => (
                 <div className={styles.inline}>
                     <Badge tone={b.status === 'ACTIVE' ? 'success' : 'neutral'} dot>{b.status === 'ACTIVE' ? 'Activa' : 'Inactiva'}</Badge>
@@ -377,11 +388,12 @@ export default function Branches() {
             key: 'actions',
             header: 'Acciones',
             type: 'actions',
+            width: '100px',
             render: (b) => (
                 <div className={styles.rowActions}>
-                    <IconButton size="sm" icon={Edit2} label={`Editar ${b.name}`} onClick={() => openModal(b)} />
+                    <IconButton size="sm" icon={Pencil} label={`Editar ${b.name}`} tooltip="Editar" onClick={() => openModal(b)} />
                     {isSuperAdmin && b.status === 'ACTIVE' && (
-                        <IconButton size="sm" icon={Trash2} label={`Desactivar ${b.name}`} onClick={() => handleDelete(b.id)} />
+                        <IconButton size="sm" icon={Power} tone="danger" tooltip="Desactivar" label={`Desactivar ${b.name}`} onClick={() => handleDelete(b.id)} />
                     )}
                 </div>
             )
@@ -394,7 +406,7 @@ export default function Branches() {
         <PageContent>
             <PageHeader
                 title="Sucursales"
-                description={`${branches.filter((b) => b.status === 'ACTIVE').length} activas · ${branches.length} registradas`}
+                description="Ubicaciones, bodegas de venta y geocerca de asistencia"
                 actions={isSuperAdmin ? (
                     <Button variant="primary" icon={Plus} onClick={() => openModal()}>
                         Nueva sucursal
@@ -405,6 +417,17 @@ export default function Branches() {
             {loadError ? (
                 <LoadErrorState message={loadError} onRetry={() => { void loadData(); }} />
             ) : (
+                <>
+                <Tabs
+                    ariaLabel="Filtrar sucursales por estado"
+                    active={statusFilter}
+                    onChange={(id) => setStatusFilter(id as StatusFilter)}
+                    tabs={STATUS_OPTIONS.map((o) => ({
+                        id: o.value,
+                        label: o.label,
+                        badge: o.value === 'ALL' ? branches.length : branches.filter((b) => b.status === o.value).length,
+                    }))}
+                />
                 <DataTable<Branch>
                     ariaLabel="Listado de sucursales"
                     rows={filteredBranches}
@@ -430,10 +453,10 @@ export default function Branches() {
                                 value={search}
                                 onChange={(e) => setSearch(e.target.value)}
                             />
-                            <SegmentedControl ariaLabel="Estado" options={STATUS_OPTIONS} value={statusFilter} onChange={setStatusFilter} />
                         </TableToolbar>
                     )}
                 />
+                </>
             )}
 
             <FullScreenModal
@@ -546,6 +569,7 @@ export default function Branches() {
                                             branchId={editingBranch.id}
                                             warehouses={editingBranch.warehouses ?? []}
                                             canEdit={hasAnyRole(user, ['SUPERADMIN', 'ADMIN'])}
+                                            controllerRef={routesControllerRef}
                                         />
                                     </FormSection>
                                 );

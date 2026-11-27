@@ -5,19 +5,19 @@ import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
 import { hasAnyRole } from '../utils/authz';
-import { Plus, Tags, Edit2, Trash2, Search } from 'lucide-react';
+import { Plus, Tags, Pencil, Trash2, Search } from 'lucide-react';
 import type { MenuBrand } from '../types';
 import styles from './catalog.module.css';
 import {
     Badge, Button, DataTable, EmptyState, Field, FormGrid, FormSection, FullScreenModal, IconButton, Input,
-    NumberInput, PageContent, PageHeader, SegmentedControl, Switch, TableToolbar, type Column,
+    NumberInput, PageContent, PageHeader, Switch, TableToolbar, Tabs, type Column,
 } from '@/ui';
 
 type StatusFilter = 'all' | 'active' | 'inactive';
-const STATUS_OPTIONS: { value: StatusFilter; label: string }[] = [
-    { value: 'all', label: 'Todas' },
-    { value: 'active', label: 'Activas' },
-    { value: 'inactive', label: 'Inactivas' },
+const STATUS_TABS: { id: StatusFilter; label: string }[] = [
+    { id: 'all', label: 'Todas' },
+    { id: 'active', label: 'Activas' },
+    { id: 'inactive', label: 'Inactivas' },
 ];
 
 const DEFAULT_COLOR = '#2563eb';
@@ -31,6 +31,7 @@ export default function Brands() {
 
     const [brands, setBrands] = useState<MenuBrand[]>([]);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editing, setEditing] = useState<MenuBrand | null>(null);
     const [formData, setFormData] = useState({
@@ -47,7 +48,9 @@ export default function Brands() {
         try {
             const res = await menuBrandsAPI.getAll();
             setBrands(res.data.data);
+            setLoadError(null);
         } catch (error) {
+            setLoadError('No se pudieron cargar las marcas.');
             notifyError(error, 'No se pudieron cargar las marcas');
         } finally {
             setLoading(false);
@@ -133,6 +136,7 @@ export default function Brands() {
         {
             key: 'name',
             header: 'Marca',
+            type: 'text',
             render: (b) => (
                 <span className={styles.cellTitle}>
                     <span className={styles.swatch} style={{ background: b.color || DEFAULT_COLOR }} aria-hidden="true" />
@@ -145,18 +149,22 @@ export default function Brands() {
         {
             key: 'status',
             header: 'Estado',
+            type: 'status',
             render: (b) => <Badge tone={b.active ? 'success' : 'neutral'} dot>{b.active ? 'Activa' : 'Inactiva'}</Badge>
         },
         ...(canMutate ? [{
             key: 'actions',
             header: 'Acciones',
             type: 'actions',
+            width: '100px',
             render: (b: MenuBrand) => (
                 <div className={styles.rowActions}>
-                    <IconButton size="sm" icon={Edit2} label={`Editar ${b.name}`} onClick={() => openModal(b)} />
+                    <IconButton size="sm" icon={Pencil} label={`Editar ${b.name}`} tooltip="Editar" onClick={() => openModal(b)} />
                     <IconButton
                         size="sm"
                         icon={Trash2}
+                        tone="danger"
+                        tooltip="Eliminar"
                         label={`Eliminar ${b.name}`}
                         onClick={() => handleDelete(b)}
                         disabled={Number(b._count?.menuItems || 0) > 0}
@@ -185,12 +193,35 @@ export default function Brands() {
                 ) : undefined}
             />
 
+            <Tabs
+                ariaLabel="Filtrar marcas por estado"
+                active={statusFilter}
+                onChange={(id) => setStatusFilter(id as StatusFilter)}
+                tabs={STATUS_TABS.map((t) => ({
+                    ...t,
+                    badge: t.id === 'all' ? brands.length : brands.filter((b) => b.active === (t.id === 'active')).length,
+                }))}
+            />
+
+            <TableToolbar>
+                <Input
+                    type="search"
+                    aria-label="Buscar marca"
+                    placeholder="Buscar marca"
+                    prefix={<Search size={14} aria-hidden="true" />}
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                />
+            </TableToolbar>
+
             <DataTable<MenuBrand>
                 ariaLabel="Listado de marcas"
                 rows={filtered}
                 rowKey={(b) => b.id}
                 columns={columns}
                 loading={loading}
+                error={loadError}
+                onRetry={() => void loadData()}
                 resetKey={`${q}|${statusFilter}`}
                 onRowClick={canMutate ? (b) => openModal(b) : undefined}
                 empty={brands.length === 0 ? (
@@ -200,24 +231,6 @@ export default function Brands() {
                         action={canMutate ? <Button variant="primary" onClick={() => openModal()}>Crear primera marca</Button> : undefined}
                     />
                 ) : 'Sin resultados. Ajusta o limpia los filtros.'}
-                toolbar={(
-                    <TableToolbar>
-                        <Input
-                            type="search"
-                            aria-label="Buscar marca"
-                            placeholder="Buscar marca"
-                            prefix={<Search size={14} aria-hidden="true" />}
-                            value={search}
-                            onChange={(e) => setSearch(e.target.value)}
-                        />
-                        <SegmentedControl
-                            ariaLabel="Estado"
-                            options={STATUS_OPTIONS}
-                            value={statusFilter}
-                            onChange={setStatusFilter}
-                        />
-                    </TableToolbar>
-                )}
             />
 
             <FullScreenModal

@@ -1,5 +1,5 @@
-import { AppSelect, Button, DateInput, Input, Textarea } from '@/ui';
-import { useState, type ReactNode } from 'react';
+import { AppSelect, Button, DateInput, Field, Input, Textarea } from '@/ui';
+import { useState, type ReactNode, useId } from 'react';
 import { Calculator, Gift } from 'lucide-react';
 import HrModalFormShell from './HrModalFormShell';
 import type {
@@ -31,6 +31,7 @@ export default function PayrollRunForm({
   onCancel,
   notice,
 }: PayrollRunFormProps) {
+  const fid = useId();
   const currentYear = new Date().getFullYear();
   const [periodId, setPeriodId] = useState('');
   const [ruleVersionId, setRuleVersionId] = useState('');
@@ -72,7 +73,6 @@ export default function PayrollRunForm({
       tabLabel={isAguinaldo ? 'Aguinaldo' : 'Corrida'}
       sectionTitle={isAguinaldo ? 'Año, corte y regla aplicable' : 'Periodo y regla aplicable'}
       icon={icon}
-      formClassName="hr-payroll-form"
       notice={notice}
       onSubmit={(event) => void submit(event)}
       footer={
@@ -80,16 +80,15 @@ export default function PayrollRunForm({
           <Button type="button" variant="ghost" onClick={onCancel} disabled={saving}>
             Cancelar
           </Button>
-          <Button variant="primary" type="submit" disabled={!online || saving || !valid}>
-            {saving ? 'Creando…' : isAguinaldo ? 'Crear aguinaldo' : 'Crear corrida'}
+          <Button loading={saving} variant="primary" type="submit" disabled={!online || saving || !valid}>
+            {isAguinaldo ? 'Crear aguinaldo' : 'Crear corrida'}
           </Button>
         </>
       }
     >
       {kind === 'REGULAR' ? (
-        <label>
-          Periodo
-          <AppSelect<string>
+        <Field label="Periodo" htmlFor={`${fid}-periodo`}>
+          <AppSelect<string> inputId={`${fid}-periodo`}
             options={[
               { value: '', label: 'Seleccionar…' },
               ...periods
@@ -103,12 +102,11 @@ export default function PayrollRunForm({
             onChange={(next) => setPeriodId(next ?? '')}
             isClearable={false}
           />
-        </label>
+        </Field>
       ) : (
         <>
-          <label>
-            Año
-            <Input
+          <Field label="Año" htmlFor={`${fid}-ano`}>
+            <Input id={`${fid}-ano`}
               type="number"
               min="2000"
               max="2200"
@@ -116,21 +114,19 @@ export default function PayrollRunForm({
               onChange={(event) => setYear(event.target.value)}
               required
             />
-          </label>
-          <label>
-            Fecha de corte
-            <DateInput
+          </Field>
+          <Field label="Fecha de corte" htmlFor={`${fid}-fecha-de-corte`}>
+            <DateInput id={`${fid}-fecha-de-corte`}
              
               value={cutoffDate}
               onChange={(event) => setCutoffDate(event.target.value)}
               required
             />
-          </label>
+          </Field>
         </>
       )}
-      <label>
-        Regla activa
-        <AppSelect<string>
+      <Field label="Regla activa" htmlFor={`${fid}-regla-activa`}>
+        <AppSelect<string> inputId={`${fid}-regla-activa`}
           options={[
             { value: '', label: 'Seleccionar…' },
             ...rules
@@ -144,17 +140,18 @@ export default function PayrollRunForm({
           onChange={(next) => setRuleVersionId(next ?? '')}
           isClearable={false}
         />
-      </label>
-      <label className="span-full">
-        Razón de apertura
-        <Textarea
-          rows={4}
-          value={reason}
-          onChange={(event) => setReason(event.target.value)}
-          maxLength={700}
-          required
-        />
-      </label>
+      </Field>
+      <div className="span-full">
+        <Field label="Razón de apertura" htmlFor={`${fid}-razon-de-apertura`}>
+          <Textarea id={`${fid}-razon-de-apertura`}
+            rows={4}
+            value={reason}
+            onChange={(event) => setReason(event.target.value)}
+            maxLength={700}
+            required
+          />
+        </Field>
+      </div>
       <p className="hr-payroll-help span-full">
         Se enviará sólo alcance, periodo y regla. El servidor obtiene empleados elegibles, snapshot
         y todos los importes.

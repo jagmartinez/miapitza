@@ -6,7 +6,7 @@ import { notifyError } from '../services/notify';
 import { purchaseOrdersAPI, suppliersAPI, productsAPI, branchesAPI, warehousesAPI, unitsAPI } from '../services/api';
 import {
     AppSelect, Badge, Button, DataTable, DateInput, Field, FormGrid, FormSection, FullScreenModal, IconButton, Input,
-    NumberInput, Textarea, formatMoney, formatNumber,
+    LoadErrorState, NumberInput, Skeleton, Textarea, formatMoney, formatNumber,
     type Column,
 } from '@/ui';
 import { Plus, Trash2, Save, CheckCircle, Package, Eye, Upload, Download } from 'lucide-react';
@@ -530,7 +530,7 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
 
     const lineColumns: Column<LineRow>[] = [
         {
-            key: 'product', header: 'Producto', width: '2fr',
+            key: 'product', header: 'Producto',
             render: (r) => (
                 <span>
                     {r.name}
@@ -539,7 +539,7 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
             ),
         },
         {
-            key: 'quantity', header: 'Cant.', width: '1fr', type: 'qty',
+            key: 'quantity', header: 'Cant.', type: 'qty',
             render: (r) => (isNew
                 ? (
                     <NumberInput
@@ -552,11 +552,11 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
                 : formatNumber(r.quantity)),
         },
         ...(showReceiptColumns ? [
-            { key: 'received', header: 'Recibido', width: '1fr', type: 'qty' as const, render: (r: LineRow) => formatQty(r.received) },
-            { key: 'pending', header: 'Pendiente', width: '1fr', type: 'qty' as const, render: (r: LineRow) => formatQty(r.pending) },
+            { key: 'received', header: 'Recibido', type: 'qty' as const, render: (r: LineRow) => formatQty(r.received) },
+            { key: 'pending', header: 'Pendiente', type: 'qty' as const, render: (r: LineRow) => formatQty(r.pending) },
         ] : []),
         {
-            key: 'cost', header: `Costo (${symbol})`, width: '1fr', type: 'money',
+            key: 'cost', header: `Costo (${symbol})`, type: 'money',
             render: (r) => (isNew
                 ? (
                     <NumberInput
@@ -569,18 +569,18 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
                 )
                 : formatPurchaseUnitCost(r.cost)),
         },
-        { key: 'total', header: `Total (${symbol})`, width: '1fr', type: 'money', accessor: (r) => r.quantity * r.cost },
+        { key: 'total', header: `Total (${symbol})`, type: 'money', accessor: (r) => r.quantity * r.cost },
         ...(isDraft ? [{
-            key: 'actions', header: '', width: '3.5rem', type: 'actions' as const,
+            key: 'actions', header: '', width: '100px', type: 'actions' as const,
             render: (r: LineRow) => (
-                <IconButton icon={Trash2} size="sm" label={`Quitar ${r.name}`} onClick={() => void handleRemoveItem(r.removeKey)} />
+                <IconButton icon={Trash2} size="sm" tone="danger" tooltip="Quitar" label={`Quitar ${r.name}`} onClick={() => void handleRemoveItem(r.removeKey)} />
             ),
         }] : []),
     ];
 
     const receiveColumns: Column<PurchaseOrderItem>[] = [
         {
-            key: 'product', header: 'Producto', width: '2fr',
+            key: 'product', header: 'Producto',
             render: (item) => (
                 <span>
                     {item.product?.name}
@@ -588,11 +588,11 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
                 </span>
             ),
         },
-        { key: 'ordered', header: 'Pedido', width: '1fr', type: 'qty', render: (item) => formatQty(Number(item.quantity)) },
-        { key: 'received', header: 'Recibido', width: '1fr', type: 'qty', render: (item) => formatQty(Number(item.receivedQuantity ?? 0)) },
-        { key: 'pending', header: 'Pendiente', width: '1fr', type: 'qty', render: (item) => formatQty(remainingQuantity(item)) },
+        { key: 'ordered', header: 'Pedido', type: 'qty', render: (item) => formatQty(Number(item.quantity)) },
+        { key: 'received', header: 'Recibido', type: 'qty', render: (item) => formatQty(Number(item.receivedQuantity ?? 0)) },
+        { key: 'pending', header: 'Pendiente', type: 'qty', render: (item) => formatQty(remainingQuantity(item)) },
         {
-            key: 'now', header: 'Recibir ahora', width: '1.4fr', type: 'qty',
+            key: 'now', header: 'Recibir ahora', type: 'qty',
             render: (item) => (
                 <NumberInput
                     aria-label={`Recibir ahora ${item.product?.name ?? ''}`}
@@ -652,7 +652,14 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
                     <p className={styles.muted}>La orden no maneja descuento ni IVA; el total es la suma de las líneas.</p>
                 </div>
             )}
-            footerStart={!isNew && (order?.status === 'ISSUED' || order?.status === 'PARTIALLY_RECEIVED') ? (
+            footerStart={isDraft && activeTab === 'data' ? (
+                <>
+                    <Button icon={Download} onClick={handleDownloadTemplate}>Plantilla</Button>
+                    <Button icon={Upload} onClick={() => importInputRef.current?.click()} loading={importing}>
+                        Importar Excel
+                    </Button>
+                </>
+            ) : !isNew && (order?.status === 'ISSUED' || order?.status === 'PARTIALLY_RECEIVED') ? (
                 <Button icon={Package} onClick={openReceiveModal}>{order?.status === 'PARTIALLY_RECEIVED' ? 'Recibir saldo' : 'Recibir'}</Button>
             ) : undefined}
             footer={({ requestClose }) => (
@@ -661,25 +668,32 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
                     {!isNew && order?.status === 'DRAFT' && (
                         <Button icon={CheckCircle} onClick={() => void handleStatusChange('ISSUED')}>Emitir</Button>
                     )}
+                    {activeTab === 'receive' && (order?.status === 'ISSUED' || order?.status === 'PARTIALLY_RECEIVED') && (
+                        <Button variant="primary" icon={CheckCircle} onClick={() => void handleReceive()} disabled={!selectedWarehouseId} loading={receiving}>
+                            Confirmar Recepción
+                        </Button>
+                    )}
                     {isDraft && (
-                        <Button variant="primary" icon={Save} type="submit" form="po-form" loading={saving} disabled={saving}>
-                            {saving ? 'Guardando...' : 'Guardar'}
+                        <Button variant="primary" icon={Save} type="submit" form="po-form" loading={saving}>
+                            Guardar
                         </Button>
                     )}
                 </>
             )}
         >
             {loading ? (
-                <p role="status">Cargando...</p>
+                <div className={styles.stack} role="status" aria-label="Cargando...">
+                    <Skeleton height={40} />
+                    <Skeleton height={160} />
+                    <Skeleton height={240} />
+                </div>
             ) : (
                 <form id="po-form" onSubmit={handleSave} className={styles.stack}>
                     {depsError && (
-                        <div className={styles.alert} role="alert">
-                            <span className={styles.inline}>
-                                No se pudieron cargar sucursales, proveedores o productos; las listas pueden estar incompletas.
-                                <Button size="sm" onClick={() => void loadDependencies()}>Reintentar</Button>
-                            </span>
-                        </div>
+                        <LoadErrorState
+                            message="No se pudieron cargar sucursales, proveedores o productos; las listas pueden estar incompletas."
+                            onRetry={() => void loadDependencies()}
+                        />
                     )}
 
                     {activeTab === 'data' && (
@@ -791,12 +805,6 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
                                             onChange={handleImportExcel}
                                             hidden
                                         />
-                                        <div className={styles.inline}>
-                                            <Button icon={Download} onClick={handleDownloadTemplate}>Plantilla</Button>
-                                            <Button icon={Upload} onClick={() => importInputRef.current?.click()} disabled={importing}>
-                                                {importing ? 'Importando...' : 'Importar Excel'}
-                                            </Button>
-                                        </div>
                                         <FormGrid columns="repeat(auto-fit, minmax(min(100%, 12rem), 1fr))">
                                             <Field label="Producto" htmlFor="po-item-product">
                                                 <AppSelect
@@ -886,11 +894,6 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
                                         rows={order?.items ?? []}
                                         rowKey={(item) => item.id}
                                     />
-                                    <div>
-                                        <Button variant="primary" icon={CheckCircle} onClick={() => void handleReceive()} disabled={!selectedWarehouseId || receiving} loading={receiving}>
-                                            Confirmar Recepción
-                                        </Button>
-                                    </div>
                                 </>
                             ) : order?.status === 'RECEIVED' ? (
                                 <p className={styles.muted}>Esta orden ya fue recibida y los ítems ingresaron al inventario.</p>

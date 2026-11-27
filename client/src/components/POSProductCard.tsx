@@ -1,4 +1,4 @@
-import { formatNumber } from '@/ui';
+import { Badge, formatNumber } from '@/ui';
 import React, { memo, useRef } from 'react';
 import type { MenuItem } from '../types';
 import type { StockBadge } from '../utils/stockAvailability';
@@ -76,6 +76,7 @@ const POSProductCard = memo(({ item, onClick, onContextMenu, onQuantityEdit, cur
                 <div
                     className="product-image-bg"
                     style={{ backgroundImage }}
+                    aria-hidden="true"
                 />
             )}
             {stockBadge ? (
@@ -83,7 +84,7 @@ const POSProductCard = memo(({ item, onClick, onContextMenu, onQuantityEdit, cur
                     className={`pos-stock-badge pos-stock-badge--${stockBadge.tone}`}
                     title="Disponibilidad estimada en la bodega de venta (no bloquea la venta)"
                 >
-                    {stockBadge.label}
+                    <Badge tone={stockBadge.tone === 'out' ? 'danger' : 'warning'}>{stockBadge.label}</Badge>
                 </span>
             ) : null}
             <div className="product-info-overlay">

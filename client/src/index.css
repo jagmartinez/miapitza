@@ -279,7 +279,7 @@ button.modal-tab {
 
 .modal-tab.active {
   background: var(--dialog-accent);
-  color: white;
+  color: var(--ui-primary-fg);
   border-color: var(--dialog-accent);
   box-shadow: none;
 }
@@ -785,7 +785,7 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
 
 .page-tab.active {
   background: var(--ui-primary);
-  color: white;
+  color: var(--ui-primary-fg);
   box-shadow: var(--shadow-sm);
 }
 
@@ -1187,7 +1187,7 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
   letter-spacing: 0.6px;
   border-radius: 0 0 0 var(--radius-md);
   background: var(--ui-primary);
-  color: white;
+  color: var(--ui-primary-fg);
   line-height: 1;
   z-index: 2;
 }

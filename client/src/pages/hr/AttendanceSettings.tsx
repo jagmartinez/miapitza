@@ -6,7 +6,7 @@ import {
 import { HrSettingRow, HrSettingsBlock, HrSettingsSection } from '../../components/hr/HrSettingsSection';
 import form from '../../components/hr/hrForm.module.css';
 import HrLoading from '../../components/hr/HrLoading';
-import HrModalFormShell from '../../components/hr/HrModalFormShell';
+import HrModalFormShell, { HrModalFooterSlot } from '../../components/hr/HrModalFormShell';
 import OnlineOnlyNotice from '../../components/hr/OnlineOnlyNotice';
 import PendingBiometricEnrollmentsPanel from '../../components/hr/PendingBiometricEnrollmentsPanel';
 import { attendanceClient, getAttendanceErrorMessage } from '../../components/hr/attendanceClient';
@@ -451,7 +451,7 @@ export default function AttendanceSettings() {
             group="Dispositivos"
             title="Credenciales de dispositivos"
             description="Inventario por sucursal; una revocación es irreversible para esa clave."
-            actions={<Button variant="primary" size="sm" icon={Plus} onClick={openDevicePanel} disabled={!online}>Crear credencial</Button>}
+            actions={<Button variant="primary" icon={Plus} onClick={openDevicePanel} disabled={!online}>Crear credencial</Button>}
           >
             <HrSettingsBlock>
               <div className={form.alertInfo} role="note">
@@ -477,7 +477,7 @@ export default function AttendanceSettings() {
                       <span className={form.actions}>
                         <Badge tone={device.status === 'ACTIVE' ? 'success' : 'neutral'} dot>{device.status === 'ACTIVE' ? 'Activo' : 'Revocado'}</Badge>
                         {device.status === 'ACTIVE' && (
-                          <Button size="sm" variant="danger" icon={Ban} onClick={() => setDeviceToRevoke(device)} disabled={!online}>Revocar</Button>
+                          <Button variant="danger" icon={Ban} onClick={() => setDeviceToRevoke(device)} disabled={!online}>Revocar</Button>
                         )}
                       </span>
                     </li>
@@ -494,7 +494,7 @@ export default function AttendanceSettings() {
             group="Biometría"
             title="Conexión biométrica"
             description="Comprueba si el servicio facial configurado en el servidor responde."
-            actions={<Button variant="ghost" size="sm" icon={RefreshCw} onClick={() => void loadProviderHealth()} disabled={!online || providerHealthLoading}>Verificar conexión</Button>}
+            actions={<Button variant="ghost" icon={RefreshCw} onClick={() => void loadProviderHealth()} disabled={!online || providerHealthLoading}>Verificar conexión</Button>}
           >
             <HrSettingsBlock>
               <p className={form.help} role="note">
@@ -546,7 +546,7 @@ export default function AttendanceSettings() {
             group="Biometría"
             title="Retención y outbox de purga"
             description="Procesa vencimientos y reintentos pendientes hasta el límite del servidor."
-            actions={<Button variant="primary" size="sm" icon={RefreshCw} onClick={() => void runMaintenance()} disabled={!online || saving}>Ejecutar mantenimiento</Button>}
+            actions={<Button variant="primary" icon={RefreshCw} onClick={() => void runMaintenance()} disabled={!online || saving}>Ejecutar mantenimiento</Button>}
           >
             <HrSettingsBlock>
               <p className={form.help}>
@@ -566,6 +566,7 @@ export default function AttendanceSettings() {
       )}
 
       <FullScreenModal
+        footer={<HrModalFooterSlot />}
         isOpen={devicePanelOpen}
         onClose={() => !saving && setDevicePanelOpen(false)}
         breadcrumb={['Recursos humanos', 'Reglas para el marcaje']}
@@ -631,6 +632,7 @@ export default function AttendanceSettings() {
         )}
       </FullScreenModal>
       <FullScreenModal
+        footer={<HrModalFooterSlot />}
         isOpen={Boolean(deviceToRevoke)}
         onClose={() => !saving && setDeviceToRevoke(null)}
         title="Revocar dispositivo"

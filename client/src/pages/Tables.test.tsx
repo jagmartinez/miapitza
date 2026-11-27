@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 
 const { activeOrders, tableRows } = vi.hoisted(() => ({ activeOrders: vi.fn(), tableRows: [
@@ -38,7 +38,11 @@ vi.mock('../components/TableDetailPanel', () => ({
 vi.mock('../components/TableOperationModal', () => ({ default: () => null }));
 vi.mock('../components/ThemeToggle', () => ({ default: () => null }));
 vi.mock('../components/KitchenNotificationBell', () => ({ default: () => null }));
-vi.mock('../components/TableMap', () => ({ default: ({ insights }: { insights?: React.ReactNode }) => <div data-testid="map">{insights}</div> }));
+vi.mock('../components/TableMap', () => ({
+    default: ({ heading, extraActions }: { heading?: React.ReactNode; extraActions?: React.ReactNode }) => (
+        <div data-testid="map">{heading}{extraActions}</div>
+    ),
+}));
 
 import Tables from './Tables';
 
@@ -48,23 +52,32 @@ const orders = [
 ];
 
 describe('Tables (mockup Mesas)', () => {
-    it('muestra los indicadores del salón visibles por defecto, con consumo abierto y mesa abierta más tiempo', async () => {
+    beforeEach(() => { localStorage.clear(); });
+
+    it('no muestra tarjetas de indicadores en la vista operativa (viven en el dashboard)', async () => {
         activeOrders.mockResolvedValue({ data: { data: orders } });
         renderPage();
-        const consumo = await screen.findByRole('region', { name: 'Consumo abierto' });
-        expect(await within(consumo).findByText('C$ 1,500.50')).toBeInTheDocument();
-        expect(consumo).toHaveTextContent('1 facturadas sin cobrar');
-        const longest = screen.getByRole('region', { name: 'Mesa abierta más tiempo' });
-        expect(await within(longest).findByText('45 min')).toBeInTheDocument();
+        const floor = await screen.findByRole('region', { name: 'Plano de mesas' });
+        // El consumo y el tiempo por mesa siguen en cada mosaico.
+        const tile = await within(floor).findByRole('button', { name: 'Mesa 1, Ocupada' });
+        expect(await within(tile).findByText('45 min')).toBeInTheDocument();
+        expect(screen.queryByRole('group', { name: 'Indicadores del salón' })).toBeNull();
+        expect(screen.queryByRole('region', { name: 'Consumo abierto' })).toBeNull();
+        expect(screen.queryByRole('region', { name: 'Mesa abierta más tiempo' })).toBeNull();
     });
 
-    it('si las órdenes activas fallan muestra N/D y no 0', async () => {
-        activeOrders.mockRejectedValue(new Error('down'));
+    it('cambia de vista con el selector solo-icono del encabezado y la lista filtra por estado con conteo', async () => {
+        activeOrders.mockResolvedValue({ data: { data: [] } });
         renderPage();
-        const consumo = await screen.findByRole('region', { name: 'Consumo abierto' });
-        await within(consumo).findByText('N/D');
-        expect(consumo).not.toHaveTextContent('C$ 0');
-        expect(within(consumo).getByRole('button', { name: 'Reintentar' })).toBeInTheDocument();
+        const views = await screen.findByRole('group', { name: 'Vista de mesas' });
+        expect(within(views).getByRole('button', { name: 'Mesas' })).toBeInTheDocument();
+        expect(within(views).getByRole('button', { name: 'Plano' })).toBeInTheDocument();
+        await userEvent.click(within(views).getByRole('button', { name: 'Lista' }));
+        const tabs = await screen.findByRole('tablist', { name: 'Estado de la mesa' });
+        expect(within(tabs).getByRole('tab', { name: 'Todas 2' })).toHaveAttribute('aria-selected', 'true');
+        expect(within(tabs).getByRole('tab', { name: 'Disponibles 1' })).toBeInTheDocument();
+        expect(within(tabs).getByRole('tab', { name: 'Ocupadas 1' })).toBeInTheDocument();
+        expect(screen.getByRole('table', { name: 'Mesas' })).toBeInTheDocument();
     });
 
     it('al tocar una mesa abre el panel lateral "Detalle de mesa" (no un modal)', async () => {

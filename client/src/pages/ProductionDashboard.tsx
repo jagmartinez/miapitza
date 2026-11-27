@@ -6,7 +6,7 @@ import { useCurrency } from '../hooks/useCurrency';
 import { getUserRoleNames } from '../utils/authz';
 import { formatLocalDateInput } from '../utils/dateInput';
 import {
-    AppSelect, Badge, Button, DataTable, DateInput, EmptyState, Field, PageContent, PageHeader, Skeleton, StatCard, TableToolbar,
+    AppSelect, Badge, Button, DataTable, DateInput, EmptyState, LoadErrorState, PageContent, PageHeader, Skeleton, StatCard, TableToolbar,
     formatNumber, formatPercent,
     type Column, type Opt, type Tone,
 } from '@/ui';
@@ -144,60 +144,56 @@ export default function ProductionDashboard() {
     const unitOf = (o: RecentRow) => o.product?.baseUnit?.abbreviation || o.product?.unit || '';
 
     const producedColumns: Column<ProducedRow>[] = [
-        { key: 'name', header: 'Producto', width: '2fr', render: (p) => <span className={s.cellTitle}>{p.name}</span> },
-        { key: 'sku', header: 'SKU', width: '1fr', hideBelow: 'md', render: (p) => p.sku || '-' },
-        { key: 'orders', header: 'Órdenes', type: 'number', width: '0.8fr', decimals: 0 },
-        { key: 'produced', header: 'Producido', type: 'qty', width: '1.2fr', render: (p) => `${formatNumber(p.produced)} ${p.unit}` },
-        { key: 'realCost', header: `Costo real (${symbol})`, type: 'money', width: '1.1fr' },
+        { key: 'name', header: 'Producto', render: (p) => <span className={s.cellTitle}>{p.name}</span> },
+        { key: 'sku', header: 'SKU', hideBelow: 'md', render: (p) => p.sku || '-' },
+        { key: 'orders', header: 'Órdenes', type: 'number', decimals: 0 },
+        { key: 'produced', header: 'Producido', type: 'qty', render: (p) => `${formatNumber(p.produced)} ${p.unit}` },
+        { key: 'realCost', header: `Costo real (${symbol})`, type: 'money' },
         {
             key: 'costVariance',
             header: `Variación (${symbol})`,
             type: 'money',
-            width: '1.1fr',
             render: (p) => <span className={p.costVariance > 0 ? s.bad : s.good}>{formatNumber(p.costVariance)}</span>,
         },
         {
             key: 'yieldPct',
             header: 'Rendimiento',
             type: 'percent',
-            width: '1fr',
             render: (p) => <Badge tone={yieldTone(p.yieldPct)}>{formatPercent(p.yieldPct)}</Badge>,
         },
     ];
 
     const operatorColumns: Column<OperatorRow>[] = [
-        { key: 'name', header: 'Operario', width: '2fr', render: (op) => <span className={s.cellTitle}>{op.name}</span> },
-        { key: 'orders', header: 'Órdenes', type: 'number', width: '1fr', decimals: 0 },
-        { key: 'realCost', header: `Costo real (${symbol})`, type: 'money', width: '1.2fr' },
+        { key: 'name', header: 'Operario', render: (op) => <span className={s.cellTitle}>{op.name}</span> },
+        { key: 'orders', header: 'Órdenes', type: 'number', decimals: 0 },
+        { key: 'realCost', header: `Costo real (${symbol})`, type: 'money' },
     ];
 
     const consumedColumns: Column<ConsumedRow>[] = [
-        { key: 'name', header: 'Insumo', width: '2fr' },
-        { key: 'sku', header: 'SKU', width: '1fr', hideBelow: 'md', render: (c) => c.sku || '-' },
-        { key: 'qty', header: 'Cantidad', type: 'qty', width: '1.2fr', render: (c) => `${formatNumber(c.consumedQuantity)} ${c.unit}` },
-        { key: 'totalCost', header: `Costo total (${symbol})`, type: 'money', width: '1.2fr' },
+        { key: 'name', header: 'Insumo' },
+        { key: 'sku', header: 'SKU', hideBelow: 'md', render: (c) => c.sku || '-' },
+        { key: 'qty', header: 'Cantidad', type: 'qty', render: (c) => `${formatNumber(c.consumedQuantity)} ${c.unit}` },
+        { key: 'totalCost', header: `Costo total (${symbol})`, type: 'money' },
     ];
 
     const recentColumns: Column<RecentRow>[] = [
-        { key: 'code', header: 'Código', width: '1fr', render: (o) => <span className={s.cellTitle}>{o.code}</span> },
-        { key: 'product', header: 'Producto', width: '2fr', render: (o) => o.product?.name || '-' },
+        { key: 'code', header: 'Código', render: (o) => <span className={s.cellTitle}>{o.code}</span> },
+        { key: 'product', header: 'Producto', render: (o) => o.product?.name || '-' },
         {
             key: 'status',
             header: 'Estado',
             type: 'status',
-            width: '1fr',
             render: (o) => <Badge tone={STATUS_META[o.status]?.tone ?? 'neutral'}>{STATUS_META[o.status]?.label || o.status}</Badge>,
         },
-        { key: 'planned', header: 'Plan.', type: 'qty', width: '1.1fr', hideBelow: 'md', render: (o) => `${formatNumber(o.plannedQuantity)} ${unitOf(o)}` },
-        { key: 'produced', header: 'Prod.', type: 'qty', width: '1.1fr', hideBelow: 'md', render: (o) => `${formatNumber(o.producedQuantity)} ${unitOf(o)}` },
+        { key: 'planned', header: 'Plan.', headerTitle: 'Planificado', type: 'qty', hideBelow: 'md', render: (o) => `${formatNumber(o.plannedQuantity)} ${unitOf(o)}` },
+        { key: 'produced', header: 'Prod.', headerTitle: 'Producido', type: 'qty', hideBelow: 'md', render: (o) => `${formatNumber(o.producedQuantity)} ${unitOf(o)}` },
         {
             key: 'realCost',
             header: `Costo real (${symbol})`,
             type: 'money',
-            width: '1.1fr',
             render: (o) => (o.status === 'FINISHED' && Number(o.realCost) > 0 ? formatNumber(o.realCost) : <span className={s.nd}>N/D</span>),
         },
-        { key: 'date', header: 'Fecha', type: 'date', width: '1fr', hideBelow: 'lg', render: (o) => fmtDate(o.finishedAt || o.date) },
+        { key: 'date', header: 'Fecha', type: 'date', hideBelow: 'lg', render: (o) => fmtDate(o.finishedAt || o.date) },
     ];
 
     const hasRealized = (kpis?.realizedOrders ?? 0) > 0;
@@ -211,38 +207,22 @@ export default function ProductionDashboard() {
             />
 
             <TableToolbar>
-                <div className={s.filter}>
-                    <Field label="Desde" htmlFor="pd-from">
-                        <DateInput id="pd-from" value={dateFrom} max={dateTo} onChange={(e) => setDateFrom(e.target.value)} />
-                    </Field>
-                </div>
-                <div className={s.filter}>
-                    <Field label="Hasta" htmlFor="pd-to">
-                        <DateInput id="pd-to" value={dateTo} min={dateFrom} max={todayStr()} onChange={(e) => setDateTo(e.target.value)} />
-                    </Field>
-                </div>
+                <DateInput id="pd-from" aria-label="Desde" title="Desde" value={dateFrom} max={dateTo} onChange={(e) => setDateFrom(e.target.value)} />
+                <DateInput id="pd-to" aria-label="Hasta" title="Hasta" value={dateTo} min={dateFrom} max={todayStr()} onChange={(e) => setDateTo(e.target.value)} />
                 {isAdmin && branches.length > 0 && (
-                    <div className={s.filter}>
-                        <Field label="Sucursal" htmlFor="pd-branch">
-                            <AppSelect<string>
-                                inputId="pd-branch"
-                                options={branchOptions}
-                                value={branchId}
-                                onChange={(v) => setBranchId(v ?? 'all')}
-                                isClearable={false}
-                            />
-                        </Field>
-                    </div>
+                    <AppSelect<string>
+                        aria-label="Sucursal"
+                        inputId="pd-branch"
+                        options={branchOptions}
+                        value={branchId}
+                        onChange={(v) => setBranchId(v ?? 'all')}
+                        isClearable={false}
+                    />
                 )}
             </TableToolbar>
 
             {branchWarning && <div className={s.banner} role="status">{branchWarning}</div>}
-            {error && (
-                <div className={s.banner} role="alert">
-                    <span>{error}</span>
-                    <Button size="sm" onClick={() => void load()}>Reintentar</Button>
-                </div>
-            )}
+            {error && <LoadErrorState message={error} onRetry={() => void load()} />}
 
             {loading ? (
                 <Skeleton height={240} />
@@ -252,18 +232,10 @@ export default function ProductionDashboard() {
                 <>
                     <div className={s.stats}>
                         <StatCard
-                            label="Costo real"
-                            value={hasRealized ? formatMoney(kpis.totalRealCost) : 'N/D'}
-                            context={hasRealized
-                                ? `Estimado ${formatMoney(kpis.totalEstimatedCost)} en ${formatNumber(kpis.realizedOrders, 0)} producciones realizadas.${deltaText(kpis.totalRealCost, prev?.totalRealCost) ? ` ${deltaText(kpis.totalRealCost, prev?.totalRealCost)}.` : ''}`
-                                : 'Sin producciones finalizadas en el período.'}
-                            tone="primary"
-                        />
-                        <StatCard
                             label="Variación de costo"
                             value={hasRealized ? formatMoney(kpis.costVariance) : 'N/D'}
                             context={hasRealized
-                                ? `${formatPercent(kpis.costVariancePct)} frente al estimado.${deltaText(kpis.costVariance, prev?.costVariance) ? ` ${deltaText(kpis.costVariance, prev?.costVariance)}.` : ''}`
+                                ? `${formatPercent(kpis.costVariancePct)} frente al estimado: real ${formatMoney(kpis.totalRealCost)} vs estimado ${formatMoney(kpis.totalEstimatedCost)} en ${formatNumber(kpis.realizedOrders, 0)} producciones.${deltaText(kpis.costVariance, prev?.costVariance) ? ` ${deltaText(kpis.costVariance, prev?.costVariance)}.` : ''}`
                                 : 'Requiere producciones finalizadas con costo estimado.'}
                             tone={!hasRealized ? 'neutral' : kpis.costVariance > 0 ? 'danger' : 'success'}
                             action={hasRealized && kpis.costVariance > 0 ? { label: 'Ver órdenes', onClick: () => navigate('/production-orders') } : undefined}
@@ -284,12 +256,6 @@ export default function ProductionDashboard() {
                                 : 'No hay órdenes en el período.'}
                             tone={kpis.total === 0 ? 'neutral' : kpis.completionRate >= 80 ? 'success' : kpis.completionRate >= 50 ? 'warning' : 'danger'}
                             action={kpis.activeOrders > 0 ? { label: 'Ver órdenes', onClick: () => navigate('/production-orders') } : undefined}
-                        />
-                        <StatCard
-                            label="Costo promedio por orden"
-                            value={hasRealized ? formatMoney(kpis.avgRealOrderCost) : 'N/D'}
-                            context="Costo real entre producciones realizadas."
-                            tone="neutral"
                         />
                     </div>
 
@@ -344,7 +310,9 @@ export default function ProductionDashboard() {
                             rows={data.topProduced}
                             rowKey={(p) => p.productId}
                             minWidth="40rem"
-                            empty={<EmptyState title="Sin datos" />}
+                            variant="flat"
+                            hidePaginationIfSinglePage
+                            empty="Sin datos"
                         />
                     </section>
 
@@ -383,6 +351,8 @@ export default function ProductionDashboard() {
                                 rows={data.topOperators}
                                 rowKey={(op) => op.userId}
                                 minWidth="24rem"
+                                variant="flat"
+                                hidePaginationIfSinglePage
                                 empty={<EmptyState icon={Users} title="Sin producción por operario en el período" />}
                             />
                         </section>
@@ -396,14 +366,16 @@ export default function ProductionDashboard() {
                             rows={data.topConsumed}
                             rowKey={(c) => c.componentProductId}
                             minWidth="32rem"
-                            empty={<EmptyState title="Sin consumos registrados" />}
+                            variant="flat"
+                            hidePaginationIfSinglePage
+                            empty="Sin consumos registrados"
                         />
                     </section>
 
                     <section className={s.panel} aria-label="Órdenes recientes">
                         <header className={s.panelHead}>
                             <h3>Órdenes recientes</h3>
-                            <Button size="sm" variant="ghost" onClick={() => navigate('/production-orders')}>Ver todas</Button>
+                            <Button variant="ghost" onClick={() => navigate('/production-orders')}>Ver todas</Button>
                         </header>
                         <DataTable<RecentRow>
                             ariaLabel="Órdenes recientes"
@@ -411,6 +383,8 @@ export default function ProductionDashboard() {
                             rows={data.recentOrders}
                             rowKey={(o) => o.id}
                             minWidth="40rem"
+                            variant="flat"
+                            hidePaginationIfSinglePage
                             onRowClick={() => navigate('/production-orders')}
                             empty={
                                 <EmptyState

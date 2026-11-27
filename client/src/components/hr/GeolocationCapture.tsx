@@ -77,9 +77,8 @@ export default function GeolocationCapture({ maxAccuracyM, onCapture, disabled =
                 </div>
             )}
             {error && <div className={form.alertDanger} role="alert">{error}</div>}
-            <Button type="button" variant="secondary" onClick={capture} disabled={disabled || loading}>
-                {location ? <RefreshCw size={17} /> : <LocateFixed size={17} />}
-                {loading ? 'Obteniendo ubicación…' : location ? (acceptable ? 'Actualizar ubicación' : 'Mejorar ubicación') : 'Capturar ubicación'}
+            <Button loading={loading} icon={location ? RefreshCw : LocateFixed} type="button" variant="secondary" onClick={capture} disabled={disabled || loading}>
+                {location ? (acceptable ? 'Actualizar ubicación' : 'Mejorar ubicación') : 'Capturar ubicación'}
             </Button>
         </section>
     );

@@ -2,15 +2,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { formatHrMoney } from '../../utils/hrDisplay';
 import { Eye, Plus, RefreshCw, Search } from 'lucide-react';
 import {
-  AppSelect, Button, DataTable, EmptyState, FormSection, FullScreenModal, IconButton, Input, LoadErrorState, PageContent, PageHeader, StatCard,
+  AppSelect, Button, DataTable, EmptyState, FormSection, FullScreenModal, IconButton, Input, LoadErrorState, PageContent, PageHeader,
   TableToolbar, Tabs,
 } from '@/ui';
+import { HrModalFooterSlot } from '../../components/hr/HrModalFormShell';
 import HrLoading from '../../components/hr/HrLoading';
 import BenefitsOnlineNotice from '../../components/hr/BenefitsOnlineNotice';
 import BenefitsStatusPill from '../../components/hr/BenefitsStatusPill';
 import BenefitsTransitionForm from '../../components/hr/BenefitsTransitionForm';
 import { collectAllPages } from '../../components/hr/collectAllPages';
-import BenefitsGovernance from './BenefitsGovernance';
+import BenefitsGovernance, { type BenefitsGovernanceSection } from './BenefitsGovernance';
 import DeductionForm from '../../components/hr/DeductionForm';
 import LoanRequestForm from '../../components/hr/LoanRequestForm';
 import TravelExpenseForm from '../../components/hr/TravelExpenseForm';
@@ -41,7 +42,7 @@ import type {
 import form from '../../components/hr/hrForm.module.css';
 
 type OperationalTab = 'TRAVEL' | 'LOAN' | 'DEDUCTION';
-type Tab = OperationalTab | 'GOVERNANCE';
+type Tab = OperationalTab | BenefitsGovernanceSection;
 const STATUS_OPTIONS: Record<OperationalTab, Array<{ value: string; label: string }>> = {
   TRAVEL: [
     { value: 'DRAFT', label: 'Borrador' },
@@ -128,22 +129,11 @@ function money(currency: string, amount?: string | null): string {
   return formatHrMoney(currency, amount);
 }
 
-/** Totals already-loaded amounts per currency (no server call, display only). */
-function sumByCurrency(rows: Array<{ currency: string; amount?: string | null }>): string {
-  const totals = new Map<string, number>();
-  rows.forEach(({ currency, amount }) => {
-    const numeric = Number(amount ?? 0);
-    const key = currency?.trim().toUpperCase() || 'NIO';
-    totals.set(key, (totals.get(key) ?? 0) + (Number.isFinite(numeric) ? numeric : 0));
-  });
-  if (totals.size === 0) return money('NIO', '0');
-  return [...totals.entries()].map(([currency, total]) => money(currency, total.toFixed(2))).join(' · ');
-}
-
 export default function BenefitsManagement() {
   const online = useBenefitsOnline();
   const { success: showSuccess, error: showError } = useAppToast();
   const [tab, setTab] = useState<Tab>('TRAVEL');
+  const governanceCreateRef = useRef<(() => void) | null>(null);
   const [organization, setOrganization] = useState<HrOrganizationCatalogs>(EMPTY_ORGANIZATION);
   const [travel, setTravel] = useState<HrTravelRequest[]>([]);
   const [loans, setLoans] = useState<HrLoan[]>([]);
@@ -394,30 +384,32 @@ export default function BenefitsManagement() {
         { id: 'TRAVEL', label: 'Viáticos', badge: travel.length },
         { id: 'LOAN', label: 'Préstamos', badge: loans.length },
         { id: 'DEDUCTION', label: 'Deducciones', badge: deductions.length },
-        { id: 'GOVERNANCE', label: 'Liquidaciones y políticas' },
+        { id: 'SETTLEMENTS', label: 'Liquidaciones' },
+        { id: 'POLICIES', label: 'Políticas' },
       ]}
     />
   );
 
-  if (tab === 'GOVERNANCE') {
+  if (tab === 'SETTLEMENTS' || tab === 'POLICIES') {
+    const governanceNewLabel = tab === 'SETTLEMENTS' ? 'Nueva liquidación' : 'Nueva versión';
     return (
       <PageContent>
         <PageHeader
           breadcrumb={['Recursos humanos', 'Prestaciones']}
-          title="Beneficios y liquidaciones"
-          description="Opera viáticos, préstamos, deducciones, políticas y cierres laborales desde una sola vista."
+          title="Viáticos, préstamos y deducciones"
+          description={tab === 'SETTLEMENTS'
+            ? 'Cada liquidación conserva cálculo, aprobaciones, pago y constancia PDF'
+            : 'Las corridas congelan la versión vigente. Una persona crea y otra activa'}
+          actions={<Button variant="primary" icon={Plus} onClick={() => governanceCreateRef.current?.()} disabled={!online}>{governanceNewLabel}</Button>}
         />
         {tabsBar}
-        <section id={activePanelId} role="tabpanel" aria-label="Liquidaciones y políticas">
-          <BenefitsGovernance embedded />
+        <section id={activePanelId} role="tabpanel" aria-label={tab === 'SETTLEMENTS' ? 'Liquidaciones finales' : 'Políticas de viáticos y préstamos'}>
+          <BenefitsGovernance embedded section={tab} createActionRef={governanceCreateRef} />
         </section>
       </PageContent>
     );
   }
 
-  const travelInProgress = travel.filter((item) => ['SUBMITTED', 'APPROVED', 'ADVANCED', 'IN_SETTLEMENT'].includes(item.status));
-  const openLoans = loans.filter((item) => ['DISBURSED', 'ACTIVE'].includes(item.status));
-  const pendingActions = [...travel, ...loans, ...deductions].filter((item) => item.allowedActions.length > 0).length;
   const newLabel = tab === 'TRAVEL' ? 'Nuevo viático' : tab === 'LOAN' ? 'Nuevo préstamo' : 'Nueva deducción';
   const resourceLabel = (resource: OperationalTab) => (resource === 'TRAVEL' ? 'Viático' : resource === 'LOAN' ? 'Préstamo' : 'Deducción');
 
@@ -430,28 +422,6 @@ export default function BenefitsManagement() {
         actions={<Button variant="primary" icon={Plus} onClick={() => setCreatePanel(tab)} disabled={!online}>{newLabel}</Button>}
       />
       <BenefitsOnlineNotice online={online} />
-      {(travelInProgress.length > 0 || openLoans.length > 0 || pendingActions > 0) && (
-        <section className={form.kpis} aria-label="Indicadores de beneficios">
-          {pendingActions > 0 && (
-            <StatCard tone="danger" label="Por atender" value={String(pendingActions)} context="Registros con una acción disponible." />
-          )}
-          {travelInProgress.length > 0 && (
-            <StatCard
-              tone="warning"
-              label="Viáticos en curso"
-              value={String(travelInProgress.length)}
-              context={sumByCurrency(travelInProgress.map((item) => ({ currency: item.currency, amount: item.approvedAmount ?? item.requestedAmount })))}
-            />
-          )}
-          {openLoans.length > 0 && (
-            <StatCard
-              label="Saldo de préstamos"
-              value={sumByCurrency(openLoans.map((item) => ({ currency: item.currency, amount: item.outstandingBalance })))}
-              context={`${openLoans.length} préstamo${openLoans.length === 1 ? '' : 's'} vigente${openLoans.length === 1 ? '' : 's'}`}
-            />
-          )}
-        </section>
-      )}
       {tabsBar}
       {!loading && error ? (
         <LoadErrorState message={error} onRetry={() => void load()} />
@@ -463,7 +433,6 @@ export default function BenefitsManagement() {
             rowKey={(entry) => `${tab}-${entry.id}`}
             loading={loading}
             pagination={{ mode: 'client' }}
-            minWidth="56rem"
             onRowClick={(entry) => void openDetail({ resource: tab, item: entry } as Selected)}
             toolbar={(
               <TableToolbar actions={<Button variant="ghost" icon={RefreshCw} onClick={() => void load()} disabled={loading || !online}>Actualizar</Button>}>
@@ -475,6 +444,7 @@ export default function BenefitsManagement() {
                   onChange={(event) => setSearch(event.target.value)}
                   placeholder="Código, empleado o detalle"
                 />
+                {/* Excepción documentada: las pestañas ya segmentan por tipo (Viáticos/Préstamos/…); el estado queda como filtro secundario. */}
                 <AppSelect<string>
                   options={[
                     { value: '', label: 'Todos los estados' },
@@ -496,9 +466,9 @@ export default function BenefitsManagement() {
                 description={search ? 'Prueba otro código, empleado o detalle.' : 'Cambia el estado o crea un nuevo registro.'}
                 action={(
                   <>
-                    {search && <Button size="sm" variant="ghost" onClick={() => setSearch('')}>Limpiar búsqueda</Button>}
-                    {status && <Button size="sm" variant="ghost" onClick={() => setStatus('')}>Mostrar todos</Button>}
-                    <Button variant="primary" size="sm" icon={Plus} onClick={() => setCreatePanel(tab)} disabled={!online}>{newLabel}</Button>
+                    {search && <Button variant="ghost" onClick={() => setSearch('')}>Limpiar búsqueda</Button>}
+                    {status && <Button variant="ghost" onClick={() => setStatus('')}>Mostrar todos</Button>}
+                    <Button variant="primary" icon={Plus} onClick={() => setCreatePanel(tab)} disabled={!online}>{newLabel}</Button>
                   </>
                 )}
               />
@@ -512,11 +482,11 @@ export default function BenefitsManagement() {
                         ? 'Motivo'
                         : 'Deducción y vigencia', render: (entry) => { const resource = tab; const item = entry as HrTravelRequest | HrLoan | HrDeduction; const description = resource === 'TRAVEL' ? `${(item as HrTravelRequest).destination} · ${dateLabel((item as HrTravelRequest).departureDate)} a ${dateLabel((item as HrTravelRequest).returnDate)}` : resource === 'LOAN' ? (item as HrLoan).purpose : `${(item as HrDeduction).name} · desde ${dateLabel((item as HrDeduction).effectiveFrom)}`; return <>{description}</>; } },
               { key: 'c3', header: tab === 'LOAN' ? 'Saldo' : 'Importe', type: 'money', render: (entry) => { const resource = tab; const item = entry as HrTravelRequest | HrLoan | HrDeduction; const amount = resource === 'TRAVEL' ? money( (item as HrTravelRequest).currency, (item as HrTravelRequest).approvedAmount ?? (item as HrTravelRequest).requestedAmount ) : resource === 'LOAN' ? money( (item as HrLoan).currency, (item as HrLoan).outstandingBalance ) : money( (item as HrDeduction).currency, (item as HrDeduction).applicableAmount ); return <span className={form.cellTitle}>{amount}</span>; } },
-              { key: 'c4', header: 'Estado', render: (entry) => { const item = entry as HrTravelRequest | HrLoan | HrDeduction; return <BenefitsStatusPill status={item.status} />; } },
+              { key: 'c4', header: 'Estado', type: 'status', render: (entry) => { const item = entry as HrTravelRequest | HrLoan | HrDeduction; return <BenefitsStatusPill status={item.status} />; } },
               { key: 'c5', header: 'Siguiente paso', render: (entry) => { const resource = tab; const item = entry as HrTravelRequest | HrLoan | HrDeduction; const nextAction = item.allowedActions[0]; const nextLabel = !nextAction ? 'Sin acciones pendientes' : resource === 'TRAVEL' ? TRAVEL_ACTION_LABELS[ nextAction as HrTravelRequest['allowedActions'][number] ] : resource === 'LOAN' ? LOAN_ACTION_LABELS[nextAction as HrLoan['allowedActions'][number]] : DEDUCTION_ACTION_LABELS[ nextAction as HrDeduction['allowedActions'][number] ]; return <>{nextLabel}</>; } },
-              { key: 'c6', header: 'Acción', width: '6rem', type: 'actions', render: (entry) => { const resource = tab; const item = entry as HrTravelRequest | HrLoan | HrDeduction; return (
+              { key: 'c6', header: 'Acción', width: '100px', type: 'actions', render: (entry) => { const resource = tab; const item = entry as HrTravelRequest | HrLoan | HrDeduction; return (
                 <div className={form.rowActions}>
-                  <IconButton icon={Eye} size="sm" label={`Ver y gestionar ${item.code}`} onClick={() => void openDetail({ resource, item } as Selected)} />
+                  <IconButton icon={Eye} size="sm" tooltip="Ver detalle" label={`Ver y gestionar ${item.code}`} onClick={() => void openDetail({ resource, item } as Selected)} />
                 </div>
               ); } },
             ]}
@@ -622,15 +592,14 @@ export default function BenefitsManagement() {
                   rows={(selected.item.expenses ?? [])}
                   rowKey={(expense) => expense.id}
                   pagination={{ mode: 'client' }}
-                  minWidth="48rem"
                   empty={<EmptyState title="Sin gastos registrados" />}
                   columns={[
-                    { key: 'c0', header: 'Fecha', render: (expense) => <>{dateLabel(expense.occurredOn)}</> },
+                    { key: 'c0', header: 'Fecha', type: 'date', render: (expense) => <>{dateLabel(expense.occurredOn)}</> },
                     { key: 'c1', header: 'Categoría', render: (expense) => <>{expense.category}</> },
                     { key: 'c2', header: 'Reclamado', type: 'money', render: (expense) => <>{money(expense.currency, expense.claimedAmount)}</> },
                     { key: 'c3', header: 'Reconocido', type: 'money', render: (expense) => <>{money(expense.currency, expense.recognizedAmount)}</> },
                     { key: 'c4', header: 'Soporte', render: (expense) => <>{expense.evidence?.fileName ?? expense.receiptReference ?? '—'}</> },
-                    { key: 'c5', header: 'Estado', render: (expense) => <BenefitsStatusPill status={expense.status} /> },
+                    { key: 'c5', header: 'Estado', type: 'status', render: (expense) => <BenefitsStatusPill status={expense.status} /> },
                   ]}
                 />
               </FormSection>
@@ -643,15 +612,14 @@ export default function BenefitsManagement() {
                     rows={(selected.item.schedule ?? [])}
                     rowKey={(installment) => installment.id}
                     pagination={{ mode: 'client' }}
-                    minWidth="48rem"
                     empty={<EmptyState title="Sin cuotas calculadas" />}
                     columns={[
-                      { key: 'c0', header: '#', render: (installment) => <>{installment.number}</> },
-                      { key: 'c1', header: 'Vence', render: (installment) => <>{dateLabel(installment.dueDate)}</> },
+                      { key: 'c0', header: '#', type: 'number', render: (installment) => <>{installment.number}</> },
+                      { key: 'c1', header: 'Vence', type: 'date', render: (installment) => <>{dateLabel(installment.dueDate)}</> },
                       { key: 'c2', header: 'Programado', type: 'money', render: (installment) => <>{money(selected.item.currency, installment.scheduledTotal)}</> },
                       { key: 'c3', header: 'Pagado', type: 'money', render: (installment) => <>{money(selected.item.currency, installment.paidAmount)}</> },
                       { key: 'c4', header: 'Saldo cuota', type: 'money', render: (installment) => <>{money(selected.item.currency, installment.outstandingAmount)}</> },
-                      { key: 'c5', header: 'Estado', render: (installment) => <BenefitsStatusPill status={installment.status} /> },
+                      { key: 'c5', header: 'Estado', type: 'status', render: (installment) => <BenefitsStatusPill status={installment.status} /> },
                     ]}
                   />
                 </FormSection>
@@ -692,6 +660,7 @@ export default function BenefitsManagement() {
         ) : null}
       </FullScreenModal>
       <FullScreenModal
+        footer={<HrModalFooterSlot />}
         isOpen={Boolean(createPanel)}
         onClose={() => {
           if (!saving) {
@@ -751,6 +720,7 @@ export default function BenefitsManagement() {
         )}
       </FullScreenModal>
       <FullScreenModal
+        footer={<HrModalFooterSlot />}
         isOpen={Boolean(transition)}
         onClose={() => !saving && setTransition(null)}
         title="Confirmar transición"

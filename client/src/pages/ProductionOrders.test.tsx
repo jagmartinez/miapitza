@@ -49,14 +49,16 @@ describe('ProductionOrders', () => {
     expect(within(row2).queryByText('0.00')).toBeNull();
   });
 
-  it('las tarjetas calculan sobrecosto y rendimiento del mes sin las órdenes sin costo', async () => {
+  it('la lista no lleva tarjetas KPI (viven en el panel de producción) y filtra por estado con pestañas con conteo', async () => {
     render(<MemoryRouter><ProductionOrders /></MemoryRouter>);
-    const overrun = await screen.findByRole('region', { name: 'Sobrecosto del mes' });
-    expect(overrun).toHaveTextContent('+C$ 30.00');
-    expect(overrun).toHaveTextContent('1 sin costo estimado o real quedan fuera');
-    const yieldCard = screen.getByRole('region', { name: 'Rendimiento real vs estándar' });
-    expect(yieldCard).toHaveTextContent('87.50 %');
-    expect(yieldCard).toHaveTextContent('OP-2');
+    const table = await screen.findByRole('table', { name: 'Órdenes de producción' });
+    expect(screen.queryByRole('region', { name: 'Sobrecosto del mes' })).toBeNull();
+    expect(screen.queryByRole('region', { name: 'Rendimiento real vs estándar' })).toBeNull();
+    const tabs = screen.getByRole('tablist', { name: 'Filtrar por estado' });
+    expect(within(tabs).getByRole('tab', { name: /Todas\s*3/ })).toHaveAttribute('aria-selected', 'true');
+    await userEvent.click(within(tabs).getByRole('tab', { name: /Borrador\s*1/ }));
+    expect(within(table).getByText('OP-3')).toBeInTheDocument();
+    expect(within(table).queryByText('OP-1')).toBeNull();
   });
 
   it('el administrador ve la excepción de inventario negativo al finalizar; otros roles no', async () => {

@@ -6,12 +6,12 @@ import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { hasAnyRole } from '../utils/authz';
 import { newIdempotencyKey } from '../utils/idempotency';
-import { Warehouse as WarehouseIcon, Plus, ArrowRightLeft, Eye, Trash2, Edit2, Search, History } from 'lucide-react';
+import { Warehouse as WarehouseIcon, Plus, ArrowRightLeft, Eye, Trash2, Pencil, Search, History } from 'lucide-react';
 import type { Branch, InventoryMovement, Product, ProductAllowedUnit, Warehouse } from '../types';
 import styles from './catalog.module.css';
 import {
     AppSelect, Badge, Button, DataTable, EmptyState, Field, FormGrid, FormSection, FullScreenModal, IconButton, Input,
-    LoadErrorState, PageContent, PageHeader, SegmentedControl, TableToolbar, type Column,
+    LoadErrorState, PageContent, PageHeader, TableToolbar, Tabs, type Column,
 } from '@/ui';
 import { getApiErrorMessage } from '../utils/apiError';
 
@@ -300,6 +300,7 @@ export default function Warehouses() {
         {
             key: 'type',
             header: 'Tipo',
+            type: 'status',
             render: (w) => <Badge tone={w.type === 'CENTRAL' ? 'primary' : 'neutral'}>{w.type === 'CENTRAL' ? 'Central' : 'Sucursal'}</Badge>
         },
         { key: 'products', header: 'Productos', type: 'number', decimals: 0, accessor: (w) => w._count?.stocks || 0 },
@@ -308,11 +309,12 @@ export default function Warehouses() {
             key: 'actions',
             header: 'Acciones',
             type: 'actions',
+            width: '136px',
             render: (w) => (
                 <div className={styles.rowActions}>
-                    <IconButton size="sm" icon={Eye} label={`Ver stock de ${w.name}`} onClick={() => viewStock(w)} />
-                    {canMutateWarehouse && <IconButton size="sm" icon={Edit2} label={`Editar ${w.name}`} onClick={() => openEdit(w)} />}
-                    {canDeleteWarehouse && <IconButton size="sm" icon={Trash2} label={`Eliminar ${w.name}`} onClick={() => handleDelete(w.id)} />}
+                    <IconButton size="sm" icon={Eye} tooltip="Ver detalle" label={`Ver stock de ${w.name}`} onClick={() => viewStock(w)} />
+                    {canMutateWarehouse && <IconButton size="sm" icon={Pencil} tooltip="Editar" label={`Editar ${w.name}`} onClick={() => openEdit(w)} />}
+                    {canDeleteWarehouse && <IconButton size="sm" icon={Trash2} tone="danger" tooltip="Eliminar" label={`Eliminar ${w.name}`} onClick={() => handleDelete(w.id)} />}
                 </div>
             )
         }
@@ -330,16 +332,17 @@ export default function Warehouses() {
             )
         },
         { key: 'quantity', header: 'Existencia', type: 'qty', decimals: 2, accessor: (s) => s.quantity },
-        { key: 'unit', header: 'Unidad', width: '7rem', accessor: (s) => s.product.baseUnit?.abbreviation || s.product.unit },
+        { key: 'unit', header: 'Unidad', accessor: (s) => s.product.baseUnit?.abbreviation || s.product.unit },
         { key: 'min', header: 'Mín. agregado', type: 'qty', decimals: 2, accessor: (s) => Number(s.product.minStock) },
     ];
 
     const historyColumns: Column<TransferRow>[] = [
-        { key: 'date', header: 'Fecha', width: '11rem', accessor: (r) => new Date(r.first?.createdAt || Date.now()).toLocaleString('es-NI') },
+        { key: 'date', header: 'Fecha', type: 'date', render: (r) => new Date(r.first?.createdAt || Date.now()).toLocaleString('es-NI') },
         { key: 'product', header: 'Producto', render: (r) => <span className={styles.cellTitle}>{r.first?.product?.name}</span> },
         {
             key: 'route',
             header: 'Ruta',
+            type: 'text',
             accessor: (r) => `${r.source?.warehouse?.name || 'Origen desconocido'} → ${r.destination?.warehouse?.name || 'Destino desconocido'}`
         },
         { key: 'quantity', header: 'Cantidad', type: 'qty', decimals: 2, accessor: (r) => r.first?.quantity || 0 },
@@ -350,23 +353,47 @@ export default function Warehouses() {
     return (
         <PageContent>
             <ToastContainer toasts={toasts} onRemove={removeToast} />
-            {loadError && <LoadErrorState message={loadError} onRetry={() => { void loadData(); }} />}
 
             <PageHeader
                 title="Bodegas"
                 description="Bodegas por sucursal, existencias y traslados."
+                actions={canMutateWarehouse ? (
+                    <Button variant="primary" icon={Plus} onClick={openCreate}>Nueva bodega</Button>
+                ) : undefined}
+            />
+
+            {loadError && <LoadErrorState message={loadError} onRetry={() => { void loadData(); }} />}
+
+            <Tabs
+                ariaLabel="Filtrar por tipo de bodega"
+                active={warehouseTypeFilter}
+                onChange={(id) => setWarehouseTypeFilter(id as TypeFilter)}
+                tabs={TYPE_FILTERS.map(({ value, label }) => ({
+                    id: value,
+                    label,
+                    badge: loadError ? undefined : value === 'ALL' ? warehouses.length : warehouses.filter((w) => w.type === value).length,
+                }))}
+            />
+
+            <TableToolbar
                 actions={(
                     <>
                         <Button icon={History} onClick={viewTransferHistory}>Historial de traslados</Button>
                         {canTransferStock && (
                             <Button icon={ArrowRightLeft} onClick={() => setShowTransfer(true)}>Nuevo traslado</Button>
                         )}
-                        {canMutateWarehouse && (
-                            <Button variant="primary" icon={Plus} onClick={openCreate}>Nueva bodega</Button>
-                        )}
                     </>
                 )}
-            />
+            >
+                <Input
+                    type="search"
+                    aria-label="Buscar bodega"
+                    placeholder="Buscar por nombre, código o sucursal"
+                    prefix={<Search size={14} aria-hidden="true" />}
+                    value={warehouseSearch}
+                    onChange={(e) => setWarehouseSearch(e.target.value)}
+                />
+            </TableToolbar>
 
             <DataTable<Warehouse>
                 ariaLabel="Listado de bodegas"
@@ -383,24 +410,6 @@ export default function Warehouses() {
                         action={canMutateWarehouse ? <Button variant="primary" onClick={openCreate}>Crear primera bodega</Button> : undefined}
                     />
                 ) : 'Sin resultados. Ajusta o limpia los filtros.'}
-                toolbar={(
-                    <TableToolbar>
-                        <Input
-                            type="search"
-                            aria-label="Buscar bodega"
-                            placeholder="Buscar por nombre, código o sucursal"
-                            prefix={<Search size={14} aria-hidden="true" />}
-                            value={warehouseSearch}
-                            onChange={(e) => setWarehouseSearch(e.target.value)}
-                        />
-                        <SegmentedControl
-                            ariaLabel="Tipo de bodega"
-                            options={TYPE_FILTERS}
-                            value={warehouseTypeFilter}
-                            onChange={setWarehouseTypeFilter}
-                        />
-                    </TableToolbar>
-                )}
             />
 
             {/* Create/Edit Warehouse */}

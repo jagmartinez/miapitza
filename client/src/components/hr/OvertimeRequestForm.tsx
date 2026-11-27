@@ -1,5 +1,5 @@
-import { AppSelect, Button, DateInput, Input, Textarea } from '@/ui';
-import { useState, type ReactNode } from 'react';
+import { AppSelect, Button, DateInput, Field, Input, Textarea } from '@/ui';
+import { useState, type ReactNode, useId } from 'react';
 import { Clock3 } from 'lucide-react';
 import HrModalFormShell from './HrModalFormShell';
 import type { HrUserSummary } from '../../types/hr';
@@ -30,6 +30,7 @@ export default function OvertimeRequestForm({
   onCancel,
   notice,
 }: OvertimeRequestFormProps) {
+  const fid = useId();
   const [userId, setUserId] = useState(initialUserId ? String(initialUserId) : '');
   const [date, setDate] = useState(initialDate);
   const [requestedMinutes, setRequestedMinutes] = useState(
@@ -60,14 +61,13 @@ export default function OvertimeRequestForm({
       footer={
         <>
           {onCancel && <Button type="button" variant="ghost" onClick={onCancel} disabled={saving}>Cancelar</Button>}
-          <Button variant="primary" type="submit" disabled={!online || saving || !date || Number(requestedMinutes) <= 0 || !reason.trim() || Boolean(users && !userId)}>{saving ? 'Enviando…' : 'Solicitar horas extra'}</Button>
+          <Button loading={saving} variant="primary" type="submit" disabled={!online || saving || !date || Number(requestedMinutes) <= 0 || !reason.trim() || Boolean(users && !userId)}>Solicitar horas extra</Button>
         </>
       }
     >
       {users && (
-        <label>
-          Usuario
-          <AppSelect<string>
+        <Field label="Usuario" htmlFor={`${fid}-usuario`}>
+          <AppSelect<string> inputId={`${fid}-usuario`}
             options={[
               { value: '', label: 'Seleccionar…' },
               ...users.map((user) => ({
@@ -79,20 +79,18 @@ export default function OvertimeRequestForm({
             onChange={(next) => setUserId(next ?? '')}
             isClearable={false}
           />
-        </label>
+        </Field>
       )}
-      <label>
-        Fecha
-        <DateInput
+      <Field label="Fecha" htmlFor={`${fid}-fecha`}>
+        <DateInput id={`${fid}-fecha`}
          
           value={date}
           onChange={(event) => setDate(event.target.value)}
           required
         />
-      </label>
-      <label>
-        Minutos solicitados
-        <Input
+      </Field>
+      <Field label="Minutos solicitados" htmlFor={`${fid}-minutos-solicitados`}>
+        <Input id={`${fid}-minutos-solicitados`}
           type="number"
           min="1"
           step="1"
@@ -100,17 +98,18 @@ export default function OvertimeRequestForm({
           onChange={(event) => setRequestedMinutes(event.target.value)}
           required
         />
-      </label>
-      <label className="span-full">
-        Razón
-        <Textarea
-          rows={4}
-          maxLength={700}
-          value={reason}
-          onChange={(event) => setReason(event.target.value)}
-          required
-        />
-      </label>
+      </Field>
+      <div className="span-full">
+        <Field label="Razón" htmlFor={`${fid}-razon`}>
+          <Textarea id={`${fid}-razon`}
+            rows={4}
+            maxLength={700}
+            value={reason}
+            onChange={(event) => setReason(event.target.value)}
+            required
+          />
+        </Field>
+      </div>
       {candidateMinutes != null && (
         <p className="hr-form-help span-full">
           El servidor reportó {candidateMinutes} min como candidato. Este dato no equivale a

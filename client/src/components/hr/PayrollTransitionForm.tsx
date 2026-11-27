@@ -1,7 +1,7 @@
-import { AppSelect, Button, Checkbox, DateInput, Input, Textarea } from '@/ui';
+import { AppSelect, Button, Checkbox, DateInput, Field, Input, Textarea } from '@/ui';
 import HrModalFormShell from './HrModalFormShell';
 import PayrollOnlineNotice from './PayrollOnlineNotice';
-import { useState } from 'react';
+import { useState, useId } from 'react';
 import { AlertTriangle, UsersRound } from 'lucide-react';
 import type {
   HrPayrollAction,
@@ -35,6 +35,7 @@ export default function PayrollTransitionForm({
   onSubmit,
   onCancel,
 }: PayrollTransitionFormProps) {
+  const fid = useId();
   const [reason, setReason] = useState('');
   const [confirmed, setConfirmed] = useState(false);
   const [paymentReference, setPaymentReference] = useState('');
@@ -83,7 +84,6 @@ export default function PayrollTransitionForm({
       tabLabel={LABELS[action]}
       sectionTitle={`${LABELS[action]} · ${run.code}`}
       icon={<UsersRound size={18} aria-hidden="true" />}
-      formClassName="hr-payroll-form"
       notice={<PayrollOnlineNotice online={online} compact />}
       onSubmit={(event) => void submit(event)}
       footer={<>
@@ -93,13 +93,14 @@ export default function PayrollTransitionForm({
         <Button
           type="submit"
           variant={sensitive ? 'danger' : 'primary'}
+          loading={saving}
           disabled={
             !online || saving || !confirmed || !reason.trim() ||
             (action === 'MARK_PAID' && (!paymentReference.trim() || !paymentDate || !paymentMethod || !evidenceReference.trim())) ||
             (action === 'VOID' && run.status === 'PAID' && (!reversalReference.trim() || !reversalDate || !reversalMethod || !evidenceReference.trim()))
           }
         >
-          {saving ? 'Registrando…' : LABELS[action]}
+          {LABELS[action]}
         </Button>
       </>}
     >
@@ -128,29 +129,27 @@ export default function PayrollTransitionForm({
           <small>El backend impide que una misma identidad ejecute pasos incompatibles.</small>
         </div>
       </div>
-      <label className="span-full">
-        Motivo obligatorio
-        <Textarea
-          rows={5}
-          value={reason}
-          onChange={(event) => setReason(event.target.value)}
-          maxLength={900}
-          required
-        />
-      </label>
+      <div className="span-full">
+        <Field label="Motivo obligatorio" htmlFor={`${fid}-motivo-obligatorio`}>
+          <Textarea id={`${fid}-motivo-obligatorio`}
+            rows={5}
+            value={reason}
+            onChange={(event) => setReason(event.target.value)}
+            maxLength={900}
+            required
+          />
+        </Field>
+      </div>
       {action === 'MARK_PAID' && (
         <>
-          <label>
-            Referencia de pago
-            <Input value={paymentReference} onChange={(event) => setPaymentReference(event.target.value)} maxLength={160} required />
-          </label>
-          <label>
-            Fecha fiscal congelada
-            <DateInput value={paymentDate} readOnly required />
-          </label>
-          <label>
-            Método
-            <AppSelect<string>
+          <Field label="Referencia de pago" htmlFor={`${fid}-referencia-de-pago`}>
+            <Input id={`${fid}-referencia-de-pago`} value={paymentReference} onChange={(event) => setPaymentReference(event.target.value)} maxLength={160} required />
+          </Field>
+          <Field label="Fecha fiscal congelada" htmlFor={`${fid}-fecha-fiscal-congelada`}>
+            <DateInput id={`${fid}-fecha-fiscal-congelada`} value={paymentDate} readOnly required />
+          </Field>
+          <Field label="Método" htmlFor={`${fid}-metodo`}>
+            <AppSelect<string> inputId={`${fid}-metodo`}
               options={[
                 { value: 'TRANSFERENCIA', label: 'Transferencia' },
                 { value: 'CHEQUE', label: 'Cheque' },
@@ -161,30 +160,27 @@ export default function PayrollTransitionForm({
               onChange={(next) => setPaymentMethod(next ?? '')}
               isClearable={false}
             />
-          </label>
-          <label>
-            Lote bancario o contable
-            <Input value={batchReference} onChange={(event) => setBatchReference(event.target.value)} maxLength={160} />
-          </label>
-          <label className="span-full">
-            Referencia de evidencia de pago
-            <Input value={evidenceReference} onChange={(event) => setEvidenceReference(event.target.value)} maxLength={500} required />
-          </label>
+          </Field>
+          <Field label="Lote bancario o contable" htmlFor={`${fid}-lote-bancario-o-contable`}>
+            <Input id={`${fid}-lote-bancario-o-contable`} value={batchReference} onChange={(event) => setBatchReference(event.target.value)} maxLength={160} />
+          </Field>
+          <div className="span-full">
+            <Field label="Referencia de evidencia de pago" htmlFor={`${fid}-referencia-de-evidencia-de`}>
+              <Input id={`${fid}-referencia-de-evidencia-de`} value={evidenceReference} onChange={(event) => setEvidenceReference(event.target.value)} maxLength={500} required />
+            </Field>
+          </div>
         </>
       )}
       {action === 'VOID' && run.status === 'PAID' && (
         <>
-          <label>
-            Referencia de reversión externa
-            <Input value={reversalReference} onChange={(event) => setReversalReference(event.target.value)} maxLength={160} required />
-          </label>
-          <label>
-            Fecha de reversión
-            <DateInput value={reversalDate} onChange={(event) => setReversalDate(event.target.value)} required />
-          </label>
-          <label>
-            Método de reversión
-            <AppSelect<string>
+          <Field label="Referencia de reversión externa" htmlFor={`${fid}-referencia-de-reversion-externa`}>
+            <Input id={`${fid}-referencia-de-reversion-externa`} value={reversalReference} onChange={(event) => setReversalReference(event.target.value)} maxLength={160} required />
+          </Field>
+          <Field label="Fecha de reversión" htmlFor={`${fid}-fecha-de-reversion`}>
+            <DateInput id={`${fid}-fecha-de-reversion`} value={reversalDate} onChange={(event) => setReversalDate(event.target.value)} required />
+          </Field>
+          <Field label="Método de reversión" htmlFor={`${fid}-metodo-de-reversion`}>
+            <AppSelect<string> inputId={`${fid}-metodo-de-reversion`}
               options={[
                 { value: 'TRANSFERENCIA_REVERSA', label: 'Transferencia reversa' },
                 { value: 'ANULACION_CHEQUE', label: 'Anulación de cheque' },
@@ -195,11 +191,12 @@ export default function PayrollTransitionForm({
               onChange={(next) => setReversalMethod(next ?? '')}
               isClearable={false}
             />
-          </label>
-          <label className="span-full">
-            Evidencia de reversión
-            <Input value={evidenceReference} onChange={(event) => setEvidenceReference(event.target.value)} maxLength={500} required />
-          </label>
+          </Field>
+          <div className="span-full">
+            <Field label="Evidencia de reversión" htmlFor={`${fid}-evidencia-de-reversion`}>
+              <Input id={`${fid}-evidencia-de-reversion`} value={evidenceReference} onChange={(event) => setEvidenceReference(event.target.value)} maxLength={500} required />
+            </Field>
+          </div>
         </>
       )}
       <Checkbox className="span-full" checked={confirmed}

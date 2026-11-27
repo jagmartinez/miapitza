@@ -2,25 +2,25 @@ import { useState, useEffect, useMemo } from 'react';
 import { productionRecipesAPI, productsAPI, unitsAPI } from '../services/api';
 import {
     AppSelect, Badge, Button, Checkbox, DataTable, EmptyState, Field, FormGrid, FormSection, FullScreenModal, IconButton, Input,
-    PageContent, PageHeader, SegmentedControl, Skeleton, StatCard, TableToolbar, Textarea, formatNumber, formatPercent,
-    type Column, type Opt, type Tone, LoadErrorState,
+    PageContent, PageHeader, Skeleton, TableToolbar, Tabs, Textarea, formatNumber, formatPercent,
+    type Column, type Opt, type Tone, LoadErrorState, Tooltip,
 } from '@/ui';
 import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
 import { useCurrency } from '../hooks/useCurrency';
 import { getUserRoleNames } from '../utils/authz';
-import { FlaskConical, Plus, Pencil, Power, Copy, Trash2, Save, Eye, X } from 'lucide-react';
+import { FlaskConical, Plus, Pencil, Power, Copy, Trash2, Save, Eye, X, Search } from 'lucide-react';
 
 /** Columnas de la lista cuando el detalle ocupa el panel derecho (maestro-detalle). */
-const MASTER_KEYS = ['product', 'version', 'status', 'unitCost'];
+const MASTER_KEYS = ['product', 'status', 'unitCost'];
 import type { ProductionRecipe, Product, UnitOfMeasure, RecipeCost } from '../types';
 import {
     COST_VARIATION_ALERT_PCT, costVariation, ingredientWeights, previousVersion, usedIn,
     type CostVariation,
 } from './recipeInsights';
 import s from './Production.module.css';
-import './ProductionRecipes.css';
+
 import { getApiErrorMessage } from '../utils/apiError';
 
 interface ComponentRow {
@@ -486,68 +486,61 @@ export default function ProductionRecipes() {
     if (loading) {
         return (
             <PageContent>
-                <PageHeader title="Recetas de producción" description="Cargando recetas…" />
-                <Skeleton height={240} />
+                <PageHeader title="Recetas de producción" description="Define recetas multinivel para productos intermedios y terminados" />
+                <div role="status" aria-label="Cargando recetas…"><Skeleton height={240} /></div>
             </PageContent>
         );
     }
 
-    const statusFilters: Array<{ value: typeof statusFilter; label: string }> = [
-        { value: 'all', label: `Todas (${recipes.length})` },
-        { value: 'ACTIVE', label: `Activas (${countBy('ACTIVE')})` },
-        { value: 'DRAFT', label: `Borradores (${countBy('DRAFT')})` },
-        { value: 'INACTIVE', label: `Inactivas (${countBy('INACTIVE')})` },
+    const statusTabs: Array<{ id: typeof statusFilter; label: string; badge: number }> = [
+        { id: 'all', label: 'Todas', badge: recipes.length },
+        { id: 'ACTIVE', label: 'Activas', badge: countBy('ACTIVE') },
+        { id: 'DRAFT', label: 'Borradores', badge: countBy('DRAFT') },
+        { id: 'INACTIVE', label: 'Inactivas', badge: countBy('INACTIVE') },
     ];
 
     const columns: Column<ProductionRecipe>[] = [
         {
             key: 'product',
             header: 'Producto',
-            width: '2fr',
             render: (recipe) => (
                 <div className={s.cellStack}>
                     <span className={s.cellTitle}>{recipe.product?.name || `#${recipe.productId}`}</span>
-                    {(recipe.name || recipe.product?.sku) && (
-                        <span className={s.cellSub}>{[recipe.name, recipe.product?.sku].filter(Boolean).join(' · ')}</span>
-                    )}
+                    <span className={s.cellSub}>
+                        {[recipe.product?.sku, `${recipe.components?.length ?? 0} ${(recipe.components?.length ?? 0) === 1 ? 'componente' : 'componentes'}`].filter(Boolean).join(' · ')}
+                    </span>
                 </div>
             ),
         },
-        { key: 'version', header: 'Versión', width: '0.7fr', render: (recipe) => `v${recipe.version}` },
         {
             key: 'status',
             header: 'Estado',
-            width: '1fr',
             type: 'status',
-            render: (recipe) => <Badge tone={STATUS_TONE_BY_RECIPE[recipe.status].tone}>{STATUS_TONE_BY_RECIPE[recipe.status].label}</Badge>,
+            render: (recipe) => <Badge tone={STATUS_TONE_BY_RECIPE[recipe.status].tone}>{STATUS_TONE_BY_RECIPE[recipe.status].label} · v{recipe.version}</Badge>,
         },
-        { key: 'components', header: '# Componentes', type: 'number', width: '0.9fr', hideBelow: 'lg', accessor: (recipe) => recipe.components?.length ?? 0, decimals: 0 },
         {
             key: 'yield',
             header: 'Rendimiento',
-            type: 'number',
-            width: '1.2fr',
+            type: 'qty',
             hideBelow: 'md',
             render: (recipe) => `${formatNumber(recipe.yieldQuantity, 2)} ${displayedYieldUnit(recipe)}`,
         },
         {
             key: 'unitCost',
-            header: `Costo unitario (${symbol})`,
+            header: `Costo unit. (${symbol})`,
             type: 'money',
-            width: '1.1fr',
             render: (recipe) => recipe.cost
                 ? formatNumber(recipe.cost.unitCost)
                 : <span className={s.bad} title={recipe.costError || undefined}>Revisar UOM</span>,
         },
         {
             key: 'variation',
-            header: 'Vs. versión anterior',
+            header: 'Var. costo',
             type: 'percent',
-            width: '1.1fr',
             hideBelow: 'lg',
             render: (recipe) => {
                 const v = variationById.get(recipe.id);
-                if (!v) return <span className={s.nd} title="Sin versión anterior o sin costo calculable">N/D</span>;
+                if (!v) return <Tooltip label="Sin versión anterior o sin costo calculable"><span tabIndex={0} className={s.nd}>N/D</span></Tooltip>;
                 const sign = v.deltaPct > 0 ? '+' : '';
                 return <span className={v.deltaPct >= COST_VARIATION_ALERT_PCT ? s.bad : undefined}>{sign}{formatPercent(v.deltaPct)}</span>;
             },
@@ -556,7 +549,6 @@ export default function ProductionRecipes() {
             key: 'batchCost',
             header: `Costo lote (${symbol})`,
             type: 'money',
-            width: '1.1fr',
             hideBelow: 'md',
             render: (recipe) => recipe.cost
                 ? formatNumber(recipe.cost.batchCost)
@@ -566,21 +558,21 @@ export default function ProductionRecipes() {
             key: 'actions',
             header: 'Acciones',
             type: 'actions',
-            width: '11rem',
+            width: '208px',
             render: (recipe) => (
                 <div className={s.rowActions}>
-                    <IconButton icon={Eye} size="sm" label={`Ver detalle de ${recipe.product?.name || recipe.name}`} onClick={() => void handleView(recipe)} />
+                    <IconButton icon={Eye} size="sm" tooltip="Ver detalle" label={`Ver detalle de ${recipe.product?.name || recipe.name}`} onClick={() => void handleView(recipe)} />
                     {canManage && recipe.status === 'DRAFT' && (
-                        <IconButton icon={Pencil} size="sm" label="Editar" onClick={() => handleOpenEdit(recipe)} />
+                        <IconButton icon={Pencil} size="sm" tooltip="Editar" label="Editar" onClick={() => handleOpenEdit(recipe)} />
                     )}
                     {canManage && recipe.status !== 'ACTIVE' && (
-                        <IconButton icon={Power} size="sm" label="Activar" onClick={() => void handleSetStatus(recipe, 'ACTIVE')} />
+                        <IconButton icon={Power} size="sm" tone="primary" tooltip="Activar" label="Activar" onClick={() => void handleSetStatus(recipe, 'ACTIVE')} />
                     )}
                     {canManage && recipe.status === 'ACTIVE' && (
-                        <IconButton icon={Power} size="sm" label="Desactivar" onClick={() => void handleSetStatus(recipe, 'INACTIVE')} />
+                        <IconButton icon={Power} size="sm" tone="danger" tooltip="Desactivar" label="Desactivar" onClick={() => void handleSetStatus(recipe, 'INACTIVE')} />
                     )}
-                    {canManage && <IconButton icon={Copy} size="sm" label="Nueva versión" onClick={() => void handleCreateVersion(recipe)} />}
-                    {canDelete && <IconButton icon={Trash2} size="sm" label="Eliminar" onClick={() => void handleDelete(recipe)} />}
+                    {canManage && <IconButton icon={Copy} size="sm" tooltip="Duplicar" label="Nueva versión" onClick={() => void handleCreateVersion(recipe)} />}
+                    {canDelete && <IconButton icon={Trash2} size="sm" tone="danger" tooltip="Eliminar" label="Eliminar" onClick={() => void handleDelete(recipe)} />}
                 </div>
             ),
         },
@@ -628,13 +620,13 @@ export default function ProductionRecipes() {
                         </div>
                     </div>
                     <div className={s.rowActions}>
-                        {canManage && <Button size="sm" icon={Copy} onClick={() => void handleCreateVersion(viewingRecipe)}>Nueva versión</Button>}
+                        {canManage && <Button icon={Copy} onClick={() => void handleCreateVersion(viewingRecipe)}>Nueva versión</Button>}
                         {canManage && viewingRecipe.status === 'DRAFT' && (
-                            <Button size="sm" variant="primary" icon={Pencil} onClick={() => { const recipe = viewingRecipe; setViewingRecipe(null); handleOpenEdit(recipe); }}>
+                            <Button variant="primary" icon={Pencil} onClick={() => { const recipe = viewingRecipe; setViewingRecipe(null); handleOpenEdit(recipe); }}>
                                 Editar receta
                             </Button>
                         )}
-                        <IconButton icon={X} size="sm" label="Cerrar detalle" onClick={() => setViewingRecipe(null)} />
+                        <IconButton icon={X} label="Cerrar detalle" tooltip="Cerrar" onClick={() => setViewingRecipe(null)} />
                     </div>
                 </header>
 
@@ -667,14 +659,15 @@ export default function ProductionRecipes() {
                         ariaLabel="Componentes de la receta"
                         rows={componentRows}
                         rowKey={(row) => row.key}
-                        minWidth="36rem"
-                        footerLabel="Costo total del lote"
+                        minWidth="0"
+                        variant="flat"
+                        hidePaginationIfSinglePage
+                        footerLabel="Total del lote"
                         empty="La receta no tiene componentes."
                         columns={[
                             {
                                 key: 'name',
                                 header: 'Insumo',
-                                width: '2fr',
                                 render: (row) => (
                                     <div className={s.cellStack}>
                                         <span className={s.cellTitle}>{row.name}</span>
@@ -682,19 +675,18 @@ export default function ProductionRecipes() {
                                     </div>
                                 ),
                             },
-                            { key: 'quantity', header: 'Cantidad', type: 'qty', width: '1fr', accessor: (row) => row.quantity },
-                            { key: 'unit', header: 'Unidad', width: '0.7fr' },
+                            { key: 'quantity', header: 'Cantidad', type: 'qty', render: (row) => `${formatNumber(row.quantity)} ${row.unit}`.trim() },
                             {
-                                key: 'unitCost', header: `Costo unit. (${symbol})`, type: 'money', width: '1fr',
+                                key: 'unitCost', header: `Costo unit. (${symbol})`, type: 'money',
                                 render: (row) => (row.unitCost === null ? 'N/D' : formatNumber(row.unitCost, row.unitCost !== 0 && Math.abs(row.unitCost) < 1 ? 4 : 2)),
                             },
                             {
-                                key: 'totalCost', header: `Costo (${symbol})`, type: 'money', width: '1fr', total: true,
+                                key: 'totalCost', header: `Costo (${symbol})`, type: 'money', total: true,
                                 accessor: (row) => row.totalCost ?? 0,
                                 render: (row) => (row.totalCost === null ? 'N/D' : formatNumber(row.totalCost)),
                             },
                             {
-                                key: 'weight', header: 'Peso en costo', type: 'percent', width: '1fr',
+                                key: 'weight', header: '% costo', headerTitle: 'Peso del insumo en el costo del lote', type: 'percent',
                                 render: (row) => (row.weight === undefined ? 'N/D' : formatPercent(row.weight)),
                             },
                         ]}
@@ -707,9 +699,9 @@ export default function ProductionRecipes() {
                         <ul className={s.usedIn}>
                             {parents.map((parent) => (
                                 <li key={parent.id}>
-                                    <button type="button" className={s.linkButton} onClick={() => void handleView(parent)}>
+                                    <Button variant="ghost" onClick={() => void handleView(parent)}>
                                         {parent.product?.name || `Producto #${parent.productId}`} · v{parent.version}
-                                    </button>
+                                    </Button>
                                     <Badge tone={STATUS_TONE_BY_RECIPE[parent.status].tone}>{STATUS_TONE_BY_RECIPE[parent.status].label}</Badge>
                                 </li>
                             ))}
@@ -739,47 +731,38 @@ export default function ProductionRecipes() {
                 actions={<Button variant="primary" icon={Plus} onClick={handleOpenCreate} disabled={!canManage}>Nueva receta</Button>}
             />
 
-            {loadError && <LoadErrorState message={loadError} onRetry={() => { void loadAll(); }} />}
+            <Tabs
+                ariaLabel="Filtrar recetas por estado"
+                active={statusFilter}
+                onChange={(id) => setStatusFilter(id as typeof statusFilter)}
+                tabs={statusTabs}
+            />
 
-            {(risingCount > 0 || noCostCount > 0) && (
-                <div className={s.stats}>
-                    {risingCount > 0 && (
-                        <StatCard
-                            label="Recetas activas con costo al alza"
-                            value={formatNumber(risingCount, 0)}
-                            context={`El costo unitario subió ${formatNumber(COST_VARIATION_ALERT_PCT, 0)} % o más frente a la versión anterior; revisa el insumo causante.`}
-                            tone="warning"
-                            action={{ label: 'Ver recetas', onClick: () => setFocus('rising') }}
-                        />
-                    )}
-                    {noCostCount > 0 && (
-                        <StatCard
-                            label="Recetas sin costo calculable"
-                            value={formatNumber(noCostCount, 0)}
-                            context="Una unidad o un factor de conversión impide calcular el costo; no entran en ningún total."
-                            tone="danger"
-                            action={{ label: 'Ver recetas', onClick: () => setFocus('nocost') }}
-                        />
-                    )}
-                </div>
-            )}
-
-            <TableToolbar
-                actions={focus !== 'all' ? <Button size="sm" onClick={() => setFocus('all')}>Quitar filtro</Button> : undefined}
-            >
-                <SegmentedControl ariaLabel="Filtrar por estado" size="sm" value={statusFilter} onChange={setStatusFilter} options={statusFilters} />
-                <div className={s.search}>
-                    <Input
-                        type="search"
-                        aria-label="Buscar receta"
-                        placeholder="Buscar por producto, SKU o receta..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                    />
-                </div>
+            <TableToolbar>
+                <Input
+                    type="search"
+                    aria-label="Buscar receta"
+                    placeholder="Buscar por producto, SKU o receta..."
+                    prefix={<Search size={14} aria-hidden="true" />}
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                />
+                <AppSelect<'all' | 'rising' | 'nocost'>
+                    aria-label="Filtrar por alerta de costo"
+                    isClearable={false}
+                    isSearchable={false}
+                    options={[
+                        { value: 'all', label: 'Todas las alertas de costo' },
+                        { value: 'rising', label: `Costo al alza (${formatNumber(risingCount, 0)})` },
+                        { value: 'nocost', label: `Sin costo calculable (${formatNumber(noCostCount, 0)})` },
+                    ]}
+                    value={focus}
+                    onChange={(v) => setFocus(v ?? 'all')}
+                />
             </TableToolbar>
 
             {/* Sin receta seleccionada la tabla usa todo el ancho; el panel aparece al elegir una fila. */}
+            {loadError && <LoadErrorState message={loadError} onRetry={() => { void loadAll(); }} />}
             <div className={detail ? s.masterDetail : undefined}>
                 <div className={s.master}>
                     <DataTable<ProductionRecipe>
@@ -822,8 +805,8 @@ export default function ProductionRecipes() {
                 footer={({ requestClose }) => (
                     <>
                         <Button variant="ghost" onClick={requestClose}>Cancelar</Button>
-                        <Button variant="primary" icon={Save} onClick={() => void handleSave()} loading={saving} disabled={saving}>
-                            {saving ? 'Guardando...' : 'Guardar'}
+                        <Button variant="primary" icon={Save} onClick={() => void handleSave()} loading={saving}>
+                            Guardar
                         </Button>
                     </>
                 )}
@@ -853,6 +836,7 @@ export default function ProductionRecipes() {
                                 <Field label="Rendimiento por lote" htmlFor="pr-yield" required hint="Cantidad que produce una corrida de esta receta.">
                                     <Input
                                         id="pr-yield"
+                                        className="ui-input--number"
                                         type="number"
                                         min="0"
                                         step="0.0001"
@@ -902,6 +886,7 @@ export default function ProductionRecipes() {
                                             <div className={s.componentQty}>
                                                 <Input
                                                     type="number"
+                                                    className="ui-input--number"
                                                     min="0"
                                                     step="0.0001"
                                                     aria-label={`Cantidad del componente ${index + 1}`}
@@ -920,9 +905,9 @@ export default function ProductionRecipes() {
                                                 />
                                             </div>
                                             <div className={s.componentCost} aria-label={`Costo estimado del componente ${index + 1}`}>
-                                                {cost === null ? <span className={s.nd} title="Se calcula al completar producto, cantidad y rendimiento">N/D</span> : formatMoney(cost)}
+                                                {cost === null ? <Tooltip label="Se calcula al completar producto, cantidad y rendimiento"><span tabIndex={0} className={s.nd}>N/D</span></Tooltip> : formatMoney(cost)}
                                             </div>
-                                            <IconButton icon={Trash2} size="sm" label="Quitar componente" onClick={() => removeRow(row.key)} />
+                                            <IconButton icon={Trash2} tone="danger" label={`Quitar componente ${index + 1}`} tooltip="Quitar componente" onClick={() => removeRow(row.key)} />
                                         </div>
                                     );
                                 })}
@@ -936,47 +921,44 @@ export default function ProductionRecipes() {
                     {activeFormTab === 'cost' && (
                         <FormSection title="Costo estimado">
                             {previewCost ? (
-                                <div className="pr-cost-panel">
-                                    <div className="pr-cost-lines">
-                                        {previewCost.lines.map((line) => (
-                                            <div key={line.componentProductId} className="pr-cost-line">
-                                                <span className="pr-cost-line-name">{line.componentName}</span>
-                                                <span className="pr-cost-line-qty">
-                                                    {line.quantity} {line.unit}
-                                                </span>
-                                                <span className="pr-cost-line-total">{formatMoney(Number(line.totalCost))}</span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                    <div className="pr-cost-totals">
-                                        <div className="pr-cost-total-row">
-                                            <span>Costo del lote</span>
-                                            <strong>{formatMoney(Number(previewCost.batchCost))}</strong>
+                                <>
+                                    <DataTable<RecipeCost['lines'][number]>
+                                        ariaLabel="Costo estimado por componente"
+                                        rows={previewCost.lines}
+                                        rowKey={(line) => line.componentProductId}
+                                        minWidth="0"
+                                        hidePaginationIfSinglePage
+                                        empty="La receta no tiene componentes."
+                                        columns={[
+                                            { key: 'name', header: 'Insumo', render: (line) => <span className={s.cellTitle}>{line.componentName}</span> },
+                                            { key: 'quantity', header: 'Cantidad', type: 'qty', render: (line) => `${formatNumber(line.quantity)} ${line.unit}`.trim() },
+                                            { key: 'totalCost', header: `Costo (${symbol})`, type: 'money', accessor: (line) => Number(line.totalCost) },
+                                        ]}
+                                    />
+                                    <dl className={s.facts}>
+                                        <div><dt>Costo del lote</dt><dd>{formatMoney(Number(previewCost.batchCost))}</dd></div>
+                                        <div>
+                                            <dt>Costo unitario{previewCost.yieldBaseUnit ? ` (por ${previewCost.yieldBaseUnit})` : ''}</dt>
+                                            <dd>{formatMoney(Number(previewCost.unitCost))}</dd>
                                         </div>
-                                        <div className="pr-cost-total-row highlight">
-                                            <span>
-                                                Costo unitario
-                                                {previewCost.yieldBaseUnit ? ` (por ${previewCost.yieldBaseUnit})` : ''}
-                                            </span>
-                                            <strong>{formatMoney(Number(previewCost.unitCost))}</strong>
-                                        </div>
-                                    </div>
-                                </div>
+                                    </dl>
+                                </>
                             ) : previewCostError ? (
-                                <div className="pr-cost-panel" role="alert">
+                                <div role="alert">
                                     <p className={s.bad}>{previewCostError}</p>
-                                    <p className="pr-helper-text">Corrige la unidad o su factor antes de guardar.</p>
+                                    <p className={s.hint}>Corrige la unidad o su factor antes de guardar.</p>
                                 </div>
+                            ) : previewCostLoading ? (
+                                <Skeleton height={120} />
                             ) : (
-                                <div className="pr-cost-panel">
-                                    <div className="pr-cost-total-row highlight">
-                                        <span>Costo estimado</span>
-                                        <strong>{previewCostLoading ? 'Calculando…' : 'N/D'}</strong>
-                                    </div>
-                                    <p className="pr-helper-text">
+                                <>
+                                    <dl className={s.facts}>
+                                        <div><dt>Costo estimado</dt><dd>N/D</dd></div>
+                                    </dl>
+                                    <p className={s.hint}>
                                         Cálculo autoritativo con conversión a unidad base y costo operativo vigente.
                                     </p>
-                                </div>
+                                </>
                             )}
                             {!editingRecipe && (
                                 <Checkbox

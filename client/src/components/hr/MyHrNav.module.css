@@ -9,14 +9,14 @@
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-  min-height: 36px;
-  padding: 0.4rem 0.65rem;
+  min-height: var(--ui-control-md);
+  padding: 0 0.75rem;
   border: 1px solid var(--ui-border);
-  border-radius: var(--ui-radius-sm);
+  border-radius: var(--ui-radius-md);
   background: var(--ui-surface);
-  color: var(--ui-text-muted);
-  font-size: var(--ui-text-xs);
-  font-weight: 750;
+  color: var(--ui-text);
+  font-size: var(--ui-text-md);
+  font-weight: 600;
   text-decoration: none;
   transition: border-color 150ms ease, color 150ms ease, background 150ms ease;
 }
@@ -30,8 +30,8 @@
 }
 
 .link:focus-visible {
-  outline: 3px solid color-mix(in srgb, var(--ui-primary) 35%, transparent);
-  outline-offset: 2px;
+  outline: none;
+  box-shadow: var(--ui-focus-ring);
 }
 
 /* El atajo de marcaje solo aparece en móvil. */
@@ -53,6 +53,6 @@
 }
 
 @media (max-width: 390px) {
-  .link { padding-inline: 0.45rem; font-size: 0.72rem; }
+  .link { padding-inline: 0.45rem; font-size: var(--ui-text-sm); }
   .link svg:nth-child(2) { display: none; }
 }

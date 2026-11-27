@@ -2,8 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { formatHrMoney } from '../../utils/hrDisplay';
 import { Eye, Plus, RefreshCw, WalletCards } from 'lucide-react';
 import {
-  Button, DataTable, EmptyState, FormSection, FullScreenModal, IconButton, LoadErrorState, PageContent, PageHeader, StatCard, TableToolbar, Tabs,
+  Button, DataTable, EmptyState, FormSection, FullScreenModal, IconButton, LoadErrorState, PageContent, PageHeader, TableToolbar, Tabs,
 } from '@/ui';
+import { HrModalFooterSlot } from '../../components/hr/HrModalFormShell';
 import HrLoading from '../../components/hr/HrLoading';
 import MyHrNav from '../../components/hr/MyHrNav';
 import BenefitsOnlineNotice from '../../components/hr/BenefitsOnlineNotice';
@@ -213,10 +214,6 @@ export default function MyBenefits() {
   };
 
   const items = tab === 'TRAVEL' ? travel : tab === 'LOAN' ? loans : deductions;
-  const actionableCount = items.filter((entry) => entry.allowedActions.length > 0).length;
-  const closedCount = items.filter((entry) =>
-    ['SETTLED', 'PAID', 'CLOSED', 'COMPLETED', 'CANCELLED', 'REJECTED'].includes(entry.status)
-  ).length;
   const activePanelId = `my-benefits-panel-${tab.toLowerCase()}`;
 
 
@@ -243,11 +240,6 @@ export default function MyBenefits() {
         }
       />
       {!online && <BenefitsOnlineNotice online={false} />}
-      {!loading && !error && actionableCount > 0 && (
-        <section className={form.kpis} aria-label="Resumen de mis beneficios">
-          <StatCard tone="warning" label="Con siguiente paso" value={String(actionableCount)} context={`Acciones permitidas por el servidor · ${closedCount} finalizado${closedCount === 1 ? '' : 's'}`} />
-        </section>
-      )}
       <Tabs
         ariaLabel="Mis beneficios"
         active={tab}
@@ -271,7 +263,6 @@ export default function MyBenefits() {
             pagination={{ mode: 'client' }}
             defaultPageSize={25}
             resetKey={tab}
-            minWidth="44rem"
             onRowClick={(item) => void openDetail({ resource: tab, item } as Selected)}
             toolbar={(
               <TableToolbar actions={<Button variant="ghost" icon={RefreshCw} onClick={() => void load()} disabled={loading || !online}>Actualizar</Button>}>
@@ -279,18 +270,16 @@ export default function MyBenefits() {
               </TableToolbar>
             )}
             columns={[
-              { key: 'code', header: 'Código', width: '1fr', render: (item) => <span className={form.cellTitle}>{item.code}</span> },
+              { key: 'code', header: 'Código', render: (item) => <span className={form.cellTitle}>{item.code}</span> },
               {
                 key: 'detail',
                 header: 'Detalle',
-                width: '2fr',
                 render: (item) => (tab === 'TRAVEL' ? (item as HrTravelRequest).destination : tab === 'LOAN' ? (item as HrLoan).purpose : (item as HrDeduction).name),
               },
-              { key: 'updatedAt', header: 'Actualizado', width: '1fr', render: (item) => dateLabel(item.updatedAt) },
+              { key: 'updatedAt', header: 'Actualizado', type: 'date', render: (item) => dateLabel(item.updatedAt) },
               {
                 key: 'amount',
                 header: tab === 'LOAN' ? 'Saldo' : 'Importe',
-                width: '1fr',
                 type: 'money',
                 render: (item) => (
                   <span className={form.cellTitle}>
@@ -302,14 +291,14 @@ export default function MyBenefits() {
                   </span>
                 ),
               },
-              { key: 'status', header: 'Estado', width: '1fr', type: 'status', render: (item) => <BenefitsStatusPill status={item.status} /> },
+              { key: 'status', header: 'Estado', type: 'status', render: (item) => <BenefitsStatusPill status={item.status} /> },
               {
                 key: 'actions',
                 header: 'Acción',
-                width: '5rem',
+                width: '100px',
                 type: 'actions',
                 render: (item) => (
-                  <IconButton icon={Eye} size="sm" label={`Ver detalle de ${item.code}`} onClick={() => void openDetail({ resource: tab, item } as Selected)} />
+                  <IconButton icon={Eye} size="sm" tooltip="Ver detalle" label={`Ver detalle de ${item.code}`} onClick={() => void openDetail({ resource: tab, item } as Selected)} />
                 ),
               },
             ]}
@@ -317,7 +306,7 @@ export default function MyBenefits() {
               <EmptyState
                 icon={WalletCards}
                 title={tab === 'TRAVEL' ? 'Aún no tienes viáticos registrados.' : tab === 'LOAN' ? 'Aún no tienes préstamos registrados.' : 'No tienes deducciones asignadas.'}
-                action={tab !== 'DEDUCTION' ? <Button variant="primary" size="sm" icon={Plus} onClick={() => setPanel(tab)} disabled={!online}>{tab === 'TRAVEL' ? 'Solicitar viático' : 'Solicitar préstamo'}</Button> : undefined}
+                action={tab !== 'DEDUCTION' ? <Button variant="primary" icon={Plus} onClick={() => setPanel(tab)} disabled={!online}>{tab === 'TRAVEL' ? 'Solicitar viático' : 'Solicitar préstamo'}</Button> : undefined}
               />
             )}
           />
@@ -404,11 +393,10 @@ export default function MyBenefits() {
                   rows={selected.item.expenses ?? []}
                   rowKey={(expense) => expense.id}
                   pagination={{ mode: 'client' }}
-                  minWidth="40rem"
                   empty={<EmptyState title="Aún no has reportado gastos para este viático." />}
                   columns={[
-                    { key: 'date', header: 'Fecha', render: (expense) => dateLabel(expense.occurredOn) },
-                    { key: 'description', header: 'Descripción', width: '2fr', render: (expense) => expense.description },
+                    { key: 'date', header: 'Fecha', type: 'date', render: (expense) => dateLabel(expense.occurredOn) },
+                    { key: 'description', header: 'Descripción', render: (expense) => expense.description },
                     { key: 'claimed', header: 'Reclamado', type: 'money', render: (expense) => money(expense.currency, expense.claimedAmount) },
                     { key: 'recognized', header: 'Reconocido', type: 'money', render: (expense) => money(expense.currency, expense.recognizedAmount) },
                     { key: 'status', header: 'Estado', type: 'status', render: (expense) => <BenefitsStatusPill status={expense.status} /> },
@@ -429,11 +417,10 @@ export default function MyBenefits() {
                     rows={selected.item.schedule ?? []}
                     rowKey={(installment) => installment.id}
                     pagination={{ mode: 'client' }}
-                    minWidth="44rem"
                     empty={<EmptyState title="El calendario de cuotas todavía no está publicado." />}
                     columns={[
-                      { key: 'number', header: '#', width: '4rem', render: (installment) => installment.number },
-                      { key: 'due', header: 'Vence', render: (installment) => dateLabel(installment.dueDate) },
+                      { key: 'number', header: '#', type: 'number', render: (installment) => installment.number },
+                      { key: 'due', header: 'Vence', type: 'date', render: (installment) => dateLabel(installment.dueDate) },
                       { key: 'scheduled', header: 'Cuota', type: 'money', render: (installment) => money(selected.item.currency, installment.scheduledTotal) },
                       { key: 'paid', header: 'Pagado', type: 'money', render: (installment) => money(selected.item.currency, installment.paidAmount) },
                       { key: 'outstanding', header: 'Saldo', type: 'money', render: (installment) => money(selected.item.currency, installment.outstandingAmount) },
@@ -470,6 +457,7 @@ export default function MyBenefits() {
         ) : null}
       </FullScreenModal>
       <FullScreenModal
+        footer={<HrModalFooterSlot />}
         isOpen={Boolean(panel)}
         breadcrumb={['Mi RH', 'Beneficios']}
         onClose={() => {
@@ -518,6 +506,7 @@ export default function MyBenefits() {
         )}
       </FullScreenModal>
       <FullScreenModal
+        footer={<HrModalFooterSlot />}
         isOpen={Boolean(transition)}
         onClose={() => !saving && setTransition(null)}
         title="Confirmar acción"

@@ -1,161 +1,18 @@
-.keypad-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: var(--dialog-overlay, var(--ui-overlay));
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 1000;
-    backdrop-filter: blur(8px) saturate(0.85);
-    padding: var(--spacing-lg);
-}
-
-.keypad-container {
-    position: relative;
-    background: var(--dialog-panel-bg, var(--ui-surface));
-    border-radius: var(--radius-xl);
-    padding: var(--spacing-xl);
-    border: 1px solid var(--dialog-panel-border, var(--ui-border));
-    box-shadow: var(--dialog-panel-shadow, var(--shadow-xl));
-    width: min(320px, 100%);
-    animation: slideUp 0.2s ease-out;
-}
-
-@keyframes slideUp {
-    from {
-        opacity: 0;
-        transform: translateY(20px);
-    }
-
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-
-.keypad-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: var(--spacing-lg);
-}
-
-.keypad-heading {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-sm);
-}
-
-.keypad-header h3 {
-    font-size: var(--font-size-xl);
-    font-weight: 600;
-    color: var(--ui-text);
-    margin: 0;
-}
-
-.keypad-close {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 32px;
-    height: 32px;
-    border-radius: var(--radius-md);
-    background: var(--dialog-muted-bg, var(--ui-bg));
-    border: 1px solid var(--dialog-panel-border, var(--ui-border));
-    color: var(--ui-text-muted);
-    cursor: pointer;
-    transition: all var(--transition-fast);
-}
-
-.keypad-close:hover {
-    background: var(--ui-surface-2);
-    border-color: var(--ui-text-muted);
-    color: var(--ui-text);
-}
+.keypad-container { display: flex; flex-direction: column; gap: var(--ui-space-4); }
 
 .keypad-display {
-    background: var(--dialog-muted-bg, var(--ui-bg));
-    border: 1px solid var(--dialog-panel-border, var(--ui-border));
-    border-radius: var(--radius-lg);
-    padding: var(--spacing-lg);
-    text-align: center;
-    font-size: var(--font-size-4xl);
-    font-weight: 700;
-    color: var(--ui-primary);
-    margin-bottom: var(--spacing-lg);
-    min-height: 80px;
     display: flex;
     align-items: center;
     justify-content: center;
-}
-
-.keypad-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: var(--spacing-sm);
-    margin-bottom: var(--spacing-lg);
-}
-
-.keypad-btn {
-    padding: var(--spacing-lg);
-    border: 2px solid var(--ui-border);
-    background: var(--dialog-panel-bg, var(--ui-surface));
-    border-radius: var(--radius-lg);
-    font-size: var(--font-size-2xl);
-    font-weight: 600;
-    color: var(--ui-text);
-    cursor: pointer;
-    transition: all var(--transition-fast);
-    min-height: 60px;
-}
-
-.keypad-btn:hover {
-    background: var(--dialog-muted-bg, var(--ui-bg));
-    border-color: var(--ui-primary);
-    transform: scale(1.05);
-}
-
-.keypad-btn:active {
-    transform: scale(0.95);
-}
-
-.keypad-clear,
-.keypad-backspace {
-    background: var(--dialog-muted-bg, var(--ui-bg));
-    color: var(--ui-danger);
+    min-height: 72px;
+    padding: var(--ui-space-3);
+    border-bottom: 1px solid var(--ui-border);
+    font-size: var(--ui-text-3xl);
     font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--ui-text);
 }
 
-.keypad-confirm {
-    width: 100%;
-    padding: var(--spacing-lg);
-    background: var(--ui-primary);
-    color: white;
-    border: none;
-    border-radius: var(--radius-lg);
-    font-size: var(--font-size-lg);
-    font-weight: 600;
-    cursor: pointer;
-    transition: all var(--transition-fast);
-}
-
-.keypad-confirm:hover {
-    background: var(--ui-primary-hover);
-}
-
-.keypad-container button:focus-visible {
-    outline: 2px solid var(--ui-primary);
-    outline-offset: 2px;
-}
-
-@media (max-width: 480px) {
-    .keypad-container { padding: var(--spacing-lg); }
-    .keypad-btn { min-height: 52px; padding: var(--spacing-md); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-    .keypad-container { animation: none; }
-}
+.keypad-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--ui-space-2); }
+.keypad-grid .ui-button.keypad-btn { height: 56px; justify-content: center; font-size: var(--ui-text-lg); font-variant-numeric: tabular-nums; }
+.keypad-grid .ui-button.keypad-btn--muted { color: var(--ui-text-muted); }

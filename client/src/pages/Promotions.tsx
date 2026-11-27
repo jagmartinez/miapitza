@@ -2,11 +2,11 @@ import { useState, useEffect, useMemo } from 'react';
 import { branchesAPI, categoriesAPI, menuAPI, promotionsAPI } from '../services/api';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
-import { Plus, Edit, Ticket, XCircle, Trash2, Search } from 'lucide-react';
+import { Plus, Pencil, Ticket, Power, Trash2, Search } from 'lucide-react';
 import { useCurrency } from '../hooks/useCurrency';
 import {
     AppSelect, Badge, Button, DataTable, DateInput, EmptyState, Field, FormGrid, FormSection, FullScreenModal, IconButton, Input,
-    NumberInput, PageContent, PageHeader, SegmentedControl, TableToolbar, type Column,
+    NumberInput, PageContent, PageHeader, SegmentedControl, TableToolbar, Tabs, type Column,
 } from '@/ui';
 import { useAuth } from '../hooks/useAuth';
 import { formatPromotionDateKey, promotionDateInput, promotionDatePayload, type PromotionDateFields } from '../utils/promotionDates';
@@ -85,11 +85,11 @@ const TYPE_OPTIONS: Array<{ value: PromotionType; label: string }> = [
 ];
 
 type StatusFilter = 'all' | 'active' | 'expired' | 'inactive';
-const STATUS_OPTIONS: { value: StatusFilter; label: string }[] = [
-    { value: 'all', label: 'Todas' },
-    { value: 'active', label: 'Activas' },
-    { value: 'expired', label: 'Expiradas' },
-    { value: 'inactive', label: 'Inactivas' },
+const STATUS_TABS: { id: StatusFilter; label: string }[] = [
+    { id: 'all', label: 'Todas' },
+    { id: 'active', label: 'Activas' },
+    { id: 'expired', label: 'Expiradas' },
+    { id: 'inactive', label: 'Inactivas' },
 ];
 
 export default function Promotions() {
@@ -102,6 +102,7 @@ export default function Promotions() {
     const { error: showError } = useAppToast();
     const [promotions, setPromotions] = useState<PromotionRow[]>([]);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [editing, setEditing] = useState<PromotionRow | null>(null);
     const [initialDates, setInitialDates] = useState<PromotionDateFields | null>(null);
@@ -125,7 +126,11 @@ export default function Promotions() {
         try {
             const res = await promotionsAPI.getAll(false); // Get all, including inactive
             setPromotions(res.data.data || []);
-        } catch (e) { console.error(e); }
+            setLoadError(null);
+        } catch (e) {
+            console.error(e);
+            setLoadError('No se pudieron cargar las promociones.');
+        }
         finally { setLoading(false); }
     };
 
@@ -279,6 +284,7 @@ export default function Promotions() {
         {
             key: 'name',
             header: 'Promoción',
+            type: 'text',
             render: (p) => (
                 <div className={styles.cellStack}>
                     <span className={styles.cellTitle}>{p.name}</span>
@@ -286,11 +292,12 @@ export default function Promotions() {
                 </div>
             )
         },
-        { key: 'type', header: 'Tipo', accessor: (p) => promotionTypeLabel(p.type) },
+        { key: 'type', header: 'Tipo', type: 'text', accessor: (p) => promotionTypeLabel(p.type) },
         { key: 'value', header: 'Valor', type: 'number', render: (p) => describePromotionValue(p, formatMoney) },
         {
             key: 'scope',
             header: 'Aplica a',
+            type: 'text',
             render: (p) => (
                 <div className={styles.cellStack}>
                     <span>{describePromotionScope(p)}</span>
@@ -301,11 +308,12 @@ export default function Promotions() {
         {
             key: 'validity',
             header: 'Vigencia',
+            type: 'text',
             render: (p) => {
                 const schedule = describePromotionSchedule(p);
                 return (
                     <div className={styles.cellStack}>
-                        <span>{`${formatDate(p.validFrom, p.validFromDate)} — ${formatDate(p.validTo, p.validToDate)}`}</span>
+                        <span style={{ whiteSpace: 'nowrap' }}>{`${formatDate(p.validFrom, p.validFromDate)} — ${formatDate(p.validTo, p.validToDate)}`}</span>
                         {schedule && <span className={styles.muted}>{schedule}</span>}
                     </div>
                 );
@@ -315,6 +323,7 @@ export default function Promotions() {
         {
             key: 'status',
             header: 'Estado',
+            type: 'status',
             render: (p) => {
                 const status = getStatus(p);
                 const tone = status === 'active' ? 'success' : status === 'expired' ? 'warning' : 'neutral';
@@ -325,10 +334,11 @@ export default function Promotions() {
             key: 'actions',
             header: 'Acciones',
             type: 'actions',
+            width: '100px',
             render: (p) => (
                 <div className={styles.rowActions}>
-                    <IconButton size="sm" icon={Edit} label={`Editar ${p.name}`} onClick={() => handleOpen(p)} />
-                    {p.active && <IconButton size="sm" icon={XCircle} label={`Desactivar ${p.name}`} onClick={() => handleDeactivate(p.id)} />}
+                    <IconButton size="sm" icon={Pencil} tooltip="Editar" label={`Editar ${p.name}`} onClick={() => handleOpen(p)} />
+                    {p.active && <IconButton size="sm" icon={Power} tone="danger" tooltip="Desactivar" label={`Desactivar ${p.name}`} onClick={() => handleDeactivate(p.id)} />}
                 </div>
             )
         }
@@ -346,30 +356,40 @@ export default function Promotions() {
                 )}
             />
 
+            <Tabs
+                ariaLabel="Filtrar promociones por estado"
+                active={statusFilter}
+                onChange={(id) => setStatusFilter(id as StatusFilter)}
+                tabs={STATUS_TABS.map((t) => ({
+                    ...t,
+                    badge: t.id === 'all' ? promotions.length : promotions.filter((p) => getStatus(p) === t.id).length,
+                }))}
+            />
+
+            <TableToolbar>
+                <Input
+                    type="search"
+                    aria-label="Buscar promoción"
+                    placeholder="Buscar por nombre o código"
+                    prefix={<Search size={14} aria-hidden="true" />}
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                />
+            </TableToolbar>
+
             <DataTable<PromotionRow>
                 ariaLabel="Promociones"
                 rows={filteredPromotions}
                 rowKey={(p) => p.id}
                 columns={columns}
                 loading={loading}
+                error={loadError}
+                onRetry={() => void loadData()}
                 resetKey={`${q}|${statusFilter}`}
                 onRowClick={(p) => handleOpen(p)}
                 empty={promotions.length === 0
                     ? <EmptyState icon={Ticket} title="No hay promociones creadas" />
                     : 'No hay promociones con este filtro.'}
-                toolbar={(
-                    <TableToolbar>
-                        <Input
-                            type="search"
-                            aria-label="Buscar promoción"
-                            placeholder="Buscar por nombre o código"
-                            prefix={<Search size={14} aria-hidden="true" />}
-                            value={search}
-                            onChange={(e) => setSearch(e.target.value)}
-                        />
-                        <SegmentedControl ariaLabel="Estado" options={STATUS_OPTIONS} value={statusFilter} onChange={setStatusFilter} />
-                    </TableToolbar>
-                )}
             />
 
             <FullScreenModal
@@ -399,7 +419,7 @@ export default function Promotions() {
                         <FormSection step={1} title="Identidad de la promoción" description="Código que el cajero ingresa y nombre visible.">
                             <FormGrid>
                                 <Field label="Código" htmlFor="promo-code" required>
-                                    <Input id="promo-code" value={formData.code} style={{ textTransform: 'uppercase', fontFamily: 'monospace' }}
+                                    <Input id="promo-code" value={formData.code} className={styles.mono}
                                         onChange={e => setFormData({ ...formData, code: e.target.value })} placeholder="PROMO10" required autoFocus />
                                 </Field>
                                 <Field label="Nombre" htmlFor="promo-name" required>
@@ -610,7 +630,6 @@ export default function Promotions() {
                                     {WEEKDAYS.map((day) => (
                                         <Button
                                             key={day.value}
-                                            size="sm"
                                             title={day.label}
                                             variant={rules.weekdays.includes(day.value) ? 'primary' : 'secondary'}
                                             aria-pressed={rules.weekdays.includes(day.value)}

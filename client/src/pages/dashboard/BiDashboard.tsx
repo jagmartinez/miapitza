@@ -264,19 +264,19 @@ export default function BiDashboard() {
     };
 
     const branchColumns: Column<BranchRow>[] = [
-        { key: 'name', header: 'Sucursal', width: '2fr' },
-        { key: 'netSales', header: 'Venta neta', type: 'money', width: '1.5fr' },
+        { key: 'name', header: 'Sucursal' },
+        { key: 'netSales', header: 'Venta neta', type: 'money' },
         {
-            key: 'deltaPct', header: 'Vs comparación', type: 'percent', width: '1.3fr',
+            key: 'deltaPct', header: 'Vs período', type: 'percent',
             render: (r) => (r.deltaPct === null ? 'Sin comparación' : formatPercent(r.deltaPct)),
         },
         {
-            key: 'spark', header: 'Tendencia', width: '1.2fr', hideBelow: 'md',
+            key: 'spark', header: 'Tendencia', hideBelow: 'md',
             render: (r) => (r.spark.length > 1 ? <Sparkline values={r.spark} tone="primary" /> : <span className="bi-cell-light">N/D</span>),
         },
-        { key: 'avgTicket', header: 'Ticket promedio', type: 'money', width: '1.3fr', hideBelow: 'md' },
+        { key: 'avgTicket', header: 'Ticket prom.', type: 'money', hideBelow: 'md' },
         {
-            key: 'foodCostPct', header: 'Costo de alimentos', type: 'percent', width: '1.6fr',
+            key: 'foodCostPct', header: 'Costo alim.', type: 'percent',
             render: (r) => (
                 <span className="bi-cell-light">
                     {formatPercent(r.foodCostPct)}
@@ -285,7 +285,7 @@ export default function BiDashboard() {
             ),
         },
         {
-            key: 'laborCostPct', header: 'Personal', type: 'percent', width: '1.6fr',
+            key: 'laborCostPct', header: 'Personal', type: 'percent',
             render: (r) => (r.laborCostPct === null || r.status.labor === 'nd' ? (
                 <span className="bi-cell-light">N/D<Badge tone="neutral">Sin nómina</Badge></span>
             ) : (
@@ -296,11 +296,11 @@ export default function BiDashboard() {
             )),
         },
         {
-            key: 'operatingMarginPct', header: 'Margen operativo', type: 'percent', width: '1.4fr', hideBelow: 'lg',
+            key: 'operatingMarginPct', header: 'Margen op.', type: 'percent', hideBelow: 'lg',
             render: (r) => (r.operatingMarginPct === null ? 'N/D' : formatPercent(r.operatingMarginPct)),
         },
         {
-            key: 'salesPerSqm', header: 'Venta por m²', type: 'money', width: '1.3fr', hideBelow: 'lg',
+            key: 'salesPerSqm', header: 'Venta por m²', type: 'money', hideBelow: 'lg',
             render: (r) => (r.salesPerSqm === null ? 'N/D' : formatMoney(r.salesPerSqm)),
         },
     ];
@@ -455,13 +455,14 @@ export default function BiDashboard() {
                                         {rows.length > 0 ? (
                                             <DataTable
                                                 ariaLabel="Margen por canal"
+                                                variant="flat"
                                                 rows={rows}
                                                 rowKey={(r) => r.channel}
                                                 minWidth="0"
                                                 columns={[
-                                                    { key: 'label', header: 'Canal', width: '2fr' },
-                                                    { key: 'netSales', header: 'Venta neta', type: 'money', width: '2fr' },
-                                                    { key: 'netMarginPct', header: 'Margen neto', type: 'percent', width: '1.5fr' },
+                                                    { key: 'label', header: 'Canal' },
+                                                    { key: 'netSales', header: 'Venta neta', type: 'money' },
+                                                    { key: 'netMarginPct', header: 'Margen neto', type: 'percent' },
                                                 ] satisfies Column<(typeof rows)[number]>[]}
                                             />
                                         ) : null}
@@ -517,6 +518,7 @@ export default function BiDashboard() {
                         ) : (
                             <DataTable
                                 ariaLabel="Comparativo de sucursales"
+                                variant="flat"
                                 columns={branchColumns}
                                 rows={branchRows.data ?? []}
                                 rowKey={(r) => r.branchId}

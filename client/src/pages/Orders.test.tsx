@@ -49,18 +49,22 @@ describe('Orders (design system)', () => {
         expect(within(table).getAllByRole('columnheader').some((h) => h.textContent === 'Total (C$)')).toBe(true);
     });
 
-    it('filtra por estado con el control segmentado', async () => {
+    it('filtra por estado con las pestañas', async () => {
         getAll.mockResolvedValue({ data: { data: [order(1, 100), order(2, 50, { status: 'CANCELLED' })] } });
         render(<Orders />);
         await screen.findByRole('table', { name: 'Órdenes' });
-        await userEvent.click(screen.getByRole('button', { name: 'Cancelada' }));
+        await userEvent.click(screen.getByRole('tab', { name: /^Cancelada/ }));
         const table = screen.getByRole('table', { name: 'Órdenes' });
         expect(within(table).queryByText('#1')).toBeNull();
         expect(within(table).getByText('#2')).toBeInTheDocument();
     });
 
     it('avisa y permite reintentar cuando la carga falla', async () => {
-        getAll.mockRejectedValueOnce(new Error('boom')).mockResolvedValue({ data: { data: [order(3, 5)] } });
+        let failMain = true;
+        getAll.mockImplementation((params: { limit?: number }) => {
+            if (params?.limit !== 1 && failMain) { failMain = false; return Promise.reject(new Error('boom')); }
+            return Promise.resolve({ data: { data: [order(3, 5)] } });
+        });
         render(<Orders />);
         const alert = await screen.findByRole('alert');
         expect(alert).toHaveTextContent('No se pudieron cargar las órdenes');

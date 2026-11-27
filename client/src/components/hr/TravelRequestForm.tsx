@@ -1,6 +1,6 @@
-import { AppSelect, Button, Checkbox, DateInput, Input, Textarea } from '@/ui';
+import { AppSelect, Button, Checkbox, DateInput, Field, Input, Textarea } from '@/ui';
 import HrMoneyInput from './HrMoneyInput';
-import { useState } from 'react';
+import { useState, useId } from 'react';
 import { MapPin, ShieldCheck } from 'lucide-react';
 import HrModalFormShell from './HrModalFormShell';
 import type { HrNamedEntity, HrUserSummary } from '../../types/hr';
@@ -27,6 +27,7 @@ export default function TravelRequestForm({
   onSubmit,
   onCancel,
 }: TravelRequestFormProps) {
+  const fid = useId();
   const [form, setForm] = useState<HrTravelRequestPayload>({
     destination: '',
     purpose: '',
@@ -61,16 +62,15 @@ export default function TravelRequestForm({
           <Button type="button" variant="ghost" onClick={onCancel} disabled={saving}>
             Cancelar
           </Button>
-          <Button variant="primary" type="submit" disabled={!online || saving || !confirmed}>
-            {saving ? 'Guardando…' : 'Crear borrador'}
+          <Button loading={saving} variant="primary" type="submit" disabled={!online || saving || !confirmed}>
+            Crear borrador
           </Button>
         </>
       }
     >
       {!selfService && (
-        <label>
-          Persona
-          <AppSelect<string>
+        <Field label="Persona" htmlFor={`${fid}-persona`}>
+          <AppSelect<string> inputId={`${fid}-persona`}
             options={[
               { value: '', label: 'Selecciona una persona' },
               ...users.map((user) => ({
@@ -84,11 +84,10 @@ export default function TravelRequestForm({
             }
             isClearable={false}
           />
-        </label>
+        </Field>
       )}
-      <label>
-        Sucursal de origen
-        <AppSelect<string>
+      <Field label="Sucursal de origen" htmlFor={`${fid}-sucursal-de-origen`}>
+        <AppSelect<string> inputId={`${fid}-sucursal-de-origen`}
           options={[
             { value: '', label: 'Sin sucursal específica' },
             ...branches.map((branch) => ({ value: String(branch.id), label: branch.name })),
@@ -102,24 +101,22 @@ export default function TravelRequestForm({
           }
           isClearable={false}
         />
-      </label>
-      <label className="span-full">
-        Destino
-        <span className="hr-benefits-input-icon">
-          <MapPin size={16} aria-hidden="true" />
-        </span>
-        <Input
-          value={form.destination}
-          onChange={(event) =>
-            setForm((current) => ({ ...current, destination: event.target.value }))
-          }
-          maxLength={160}
-          required
-        />
-      </label>
-      <label>
-        Salida
-        <DateInput
+      </Field>
+      <div className="span-full">
+        <Field label="Destino" htmlFor={`${fid}-destino`}>
+          <Input id={`${fid}-destino`}
+            prefix={<MapPin size={16} aria-hidden="true" />}
+            value={form.destination}
+            onChange={(event) =>
+              setForm((current) => ({ ...current, destination: event.target.value }))
+            }
+            maxLength={160}
+            required
+          />
+        </Field>
+      </div>
+      <Field label="Salida" htmlFor={`${fid}-salida`}>
+        <DateInput id={`${fid}-salida`}
          
           value={form.departureDate}
           onChange={(event) =>
@@ -127,10 +124,9 @@ export default function TravelRequestForm({
           }
           required
         />
-      </label>
-      <label>
-        Regreso
-        <DateInput
+      </Field>
+      <Field label="Regreso" htmlFor={`${fid}-regreso`}>
+        <DateInput id={`${fid}-regreso`}
          
           min={form.departureDate}
           value={form.returnDate}
@@ -139,10 +135,9 @@ export default function TravelRequestForm({
           }
           required
         />
-      </label>
-      <label>
-        Moneda
-        <AppSelect<string>
+      </Field>
+      <Field label="Moneda" htmlFor={`${fid}-moneda`}>
+        <AppSelect<string> inputId={`${fid}-moneda`}
           options={[
             { value: 'NIO', label: 'NIO — Córdoba' },
             { value: 'USD', label: 'USD — Dólar' },
@@ -151,28 +146,27 @@ export default function TravelRequestForm({
           onChange={(next) => setForm((current) => ({ ...current, currency: next ?? '' }))}
           isClearable={false}
         />
-      </label>
-      <label>
-        Estimado solicitado
-        <HrMoneyInput
+      </Field>
+      <Field label="Estimado solicitado" htmlFor={`${fid}-estimado-solicitado`} hint="Es una solicitud; el servidor determina el monto elegible y aprobado.">
+        <HrMoneyInput id={`${fid}-estimado-solicitado`}
           value={form.requestedAmount}
           onValueChange={(requestedAmount) =>
             setForm((current) => ({ ...current, requestedAmount }))
           }
           required
         />
-        <small>Es una solicitud; el servidor determina el monto elegible y aprobado.</small>
-      </label>
-      <label className="span-full">
-        Motivo del viaje
-        <Textarea
-          rows={4}
-          value={form.purpose}
-          onChange={(event) => setForm((current) => ({ ...current, purpose: event.target.value }))}
-          maxLength={900}
-          required
-        />
-      </label>
+      </Field>
+      <div className="span-full">
+        <Field label="Motivo del viaje" htmlFor={`${fid}-motivo-del-viaje`}>
+          <Textarea id={`${fid}-motivo-del-viaje`}
+            rows={4}
+            value={form.purpose}
+            onChange={(event) => setForm((current) => ({ ...current, purpose: event.target.value }))}
+            maxLength={900}
+            required
+          />
+        </Field>
+      </div>
       <Checkbox className="span-full" checked={confirmed}
           onChange={(event) => setConfirmed(event.target.checked)} label={<><span>
           <ShieldCheck size={17} aria-hidden="true" /> Confirmo fechas, destino, propósito y monto

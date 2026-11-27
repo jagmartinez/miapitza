@@ -1,0 +1,13 @@
+/* Usuarios: reglas propias que no cubre catalog.module.css. Solo tokens --ui-*. */
+/* Selector nativo del color identificador: muestra de ancho fijo con el alto estándar de control. */
+.colorSwatch {
+  width: calc(var(--ui-control-md) + var(--ui-space-4));
+  height: var(--ui-control-md);
+  flex: none;
+  padding: 2px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-md);
+  background: var(--ui-surface);
+  cursor: pointer;
+}
+.colorSwatch:focus-visible { outline: none; border-color: var(--ui-primary); box-shadow: var(--ui-focus-ring); }

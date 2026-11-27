@@ -303,7 +303,7 @@ export default function CameraCapture({
                 <Camera size={19} aria-hidden="true" />
                 <div><h3 id="hr-camera-title">Evidencia facial</h3><p>La secuencia se mantiene sólo en memoria durante este intento y se envía para verificación 1:1 y prueba de vida.</p></div>
             </div>
-            <div className="hr-camera-stage">
+            <div className="hr-camera-stage dark">
                 {previewUrl
                     ? <img src={previewUrl} alt="Vista previa del primer cuadro facial del intento actual" />
                     : <video ref={videoRef} muted playsInline aria-label="Vista en vivo de la cámara frontal" />}
@@ -346,11 +346,11 @@ export default function CameraCapture({
             {captureStatus && <div className={form.alertInfo} role="status" aria-live="polite">{captureStatus}</div>}
             {error && <div className={form.alertDanger} role="alert">{error}</div>}
             <div className="hr-evidence-actions">
-                {(state === 'IDLE' || state === 'ERROR') && <Button type="button" variant="secondary" onClick={() => void startCamera()} disabled={disabled}><Camera size={17} /> Activar cámara</Button>}
+                {(state === 'IDLE' || state === 'ERROR') && <Button type="button" variant="secondary" onClick={() => void startCamera()} disabled={disabled} icon={Camera}>Activar cámara</Button>}
                 {state === 'REQUESTING' && <Button type="button" variant="secondary" disabled>Solicitando permiso…</Button>}
-                {state === 'LIVE' && <Button variant="primary" type="button" onClick={() => void captureSequence()} disabled={disabled}><Camera size={17} /> Comenzar prueba guiada</Button>}
+                {state === 'LIVE' && <Button variant="primary" type="button" onClick={() => void captureSequence()} disabled={disabled} icon={Camera}>Comenzar prueba guiada</Button>}
                 {state === 'CAPTURING' && <Button variant="primary" type="button" disabled>Prueba de vida en curso…</Button>}
-                {state === 'CAPTURED' && <Button type="button" variant="secondary" onClick={() => void startCamera()} disabled={disabled}><RefreshCw size={17} /> Repetir secuencia</Button>}
+                {state === 'CAPTURED' && <Button type="button" variant="secondary" onClick={() => void startCamera()} disabled={disabled} icon={RefreshCw}>Repetir secuencia</Button>}
             </div>
         </section>
     );

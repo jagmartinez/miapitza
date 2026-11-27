@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { notifyError } from '../services/notify';
 import api, { unitsAPI } from '../services/api';
-import { formatCurrency, type CurrencySettings } from '../utils/currency';
+import { formatCurrency, getCurrencySymbol, type CurrencySettings } from '../utils/currency';
 import { Search, Save } from 'lucide-react';
 import { useAppToast } from '../context/ToastContext';
 import { formatLocalDateInput } from '../utils/dateInput';
@@ -9,7 +9,7 @@ import { newIdempotencyKey } from '../utils/idempotency';
 import catalog from './catalog.module.css';
 import {
     AppSelect, Button, DataTable, DateInput, EmptyState, Field, FormGrid, FormSection, Input, PageContent, PageHeader,
-    StatCard, TableToolbar, Tabs, Textarea, formatNumber, type Column,
+    TableToolbar, Tabs, Textarea, formatNumber, type Column,
 } from '@/ui';
 
 
@@ -301,7 +301,7 @@ const WasteReport: React.FC = () => {
                             />
                         </Field>
                     </FormSection>
-                    <div className={catalog.inline} style={{ justifyContent: 'flex-end' }}>
+                    <div className={catalog.rowActions}>
                         <Button variant="primary" type="submit" icon={Save} loading={loading}>
                             Registrar merma
                         </Button>
@@ -312,22 +312,35 @@ const WasteReport: React.FC = () => {
             {/* Report Tab */}
             {activeTab === 'report' && (
                 <>
+                    <TableToolbar actions={(
+                        <Button variant="primary" icon={Search} onClick={loadReport} loading={loading}>Generar reporte</Button>
+                    )}>
+                        <DateInput aria-label="Desde" value={filters.startDate} onChange={(e) => setFilters({ ...filters, startDate: e.target.value })} />
+                        <DateInput aria-label="Hasta" value={filters.endDate} onChange={(e) => setFilters({ ...filters, endDate: e.target.value })} />
+                        <AppSelect
+                            aria-label="Almacén"
+                            options={warehouses.map((w) => ({ value: w.id.toString(), label: w.name }))}
+                            value={filters.warehouseId || null}
+                            onChange={(v) => setFilters({ ...filters, warehouseId: v || '' })}
+                            placeholder="Todos los almacenes"
+                            isClearable
+                        />
+                        <AppSelect
+                            aria-label="Producto"
+                            options={products.map((p) => ({ value: p.id.toString(), label: p.name }))}
+                            value={filters.productId || null}
+                            onChange={(v) => setFilters({ ...filters, productId: v || '' })}
+                            placeholder="Todos los productos"
+                            isClearable
+                        />
+                    </TableToolbar>
+
                     {report && (
-                        <div className={catalog.kpiGrid}>
-                            <StatCard
-                                label="Costo total de merma"
-                                tone={report.summary.totalCost > 0 ? 'danger' : 'neutral'}
-                                value={formatCurrency(report.summary.totalCost, settings)}
-                                context={`${formatNumber(report.summary.totalEntries ?? report.details.length, 0)} registros · ${report.byReason[0] ? `mayor causa: ${report.byReason[0].reason}` : 'sin causas registradas'}`}
-                            />
-                            <StatCard
-                                label="Cantidad física"
-                                value={report.summary.quantities.length > 0
-                                    ? report.summary.quantities.map((item) => `${formatNumber(item.quantity)} ${item.unit}`).join(' · ')
-                                    : '0'}
-                                context="Suma por unidad de medida en el período"
-                            />
-                        </div>
+                        <p className={catalog.summaryLine} role="status">
+                            <span>Costo total de merma <strong>{formatCurrency(report.summary.totalCost, settings)}</strong></span>
+                            <span>{formatNumber(report.summary.totalEntries ?? report.details.length, 0)} registros</span>
+                            <span>{report.byReason[0] ? <>Mayor causa <strong>{report.byReason[0].reason}</strong></> : 'Sin causas registradas'}</span>
+                        </p>
                     )}
 
                     <DataTable
@@ -338,36 +351,12 @@ const WasteReport: React.FC = () => {
                         defaultPageSize={PAGE_SIZE}
                         pageSizeOptions={[10, 20, 50, 100]}
                         empty={<EmptyState title={report ? 'Sin registros de merma en el período seleccionado' : 'Aplica los filtros para generar el reporte.'} />}
-                        toolbar={(
-                            <TableToolbar actions={(
-                                <Button variant="primary" icon={Search} onClick={loadReport} loading={loading}>Generar reporte</Button>
-                            )}>
-                                <DateInput aria-label="Desde" value={filters.startDate} onChange={(e) => setFilters({ ...filters, startDate: e.target.value })} />
-                                <DateInput aria-label="Hasta" value={filters.endDate} onChange={(e) => setFilters({ ...filters, endDate: e.target.value })} />
-                                <AppSelect
-                                    aria-label="Almacén"
-                                    options={warehouses.map((w) => ({ value: w.id.toString(), label: w.name }))}
-                                    value={filters.warehouseId || null}
-                                    onChange={(v) => setFilters({ ...filters, warehouseId: v || '' })}
-                                    placeholder="Todos los almacenes"
-                                    isClearable
-                                />
-                                <AppSelect
-                                    aria-label="Producto"
-                                    options={products.map((p) => ({ value: p.id.toString(), label: p.name }))}
-                                    value={filters.productId || null}
-                                    onChange={(v) => setFilters({ ...filters, productId: v || '' })}
-                                    placeholder="Todos los productos"
-                                    isClearable
-                                />
-                            </TableToolbar>
-                        )}
                         columns={[
                             { key: 'date', header: 'Fecha', type: 'date' },
                             { key: 'product', header: 'Producto' },
                             { key: 'quantity', header: 'Cantidad', type: 'qty', render: (entry) => `${formatNumber(entry.quantity)} ${entry.unit}` },
-                            { key: 'cost', header: 'Costo', type: 'money', total: true, accessor: (entry) => entry.cost },
-                            { key: 'reason', header: 'Razón' },
+                            { key: 'cost', header: `Costo (${getCurrencySymbol(settings)})`, type: 'money', total: true, accessor: (entry) => entry.cost },
+                            { key: 'reason', header: 'Razón', type: 'text' },
                             { key: 'warehouse', header: 'Almacén', hideBelow: 'lg' },
                             { key: 'user', header: 'Responsable' },
                         ] as Column<(typeof detailEntries)[number]>[]}
@@ -380,13 +369,14 @@ const WasteReport: React.FC = () => {
                                 ariaLabel="Merma por razón"
                                 rows={report.byReason}
                                 rowKey={(item) => item.reason}
-                                empty={<EmptyState title="Sin datos para los filtros seleccionados" />}
+                                hidePaginationIfSinglePage
+                                empty="Sin datos para los filtros seleccionados"
                                 columns={[
                                     { key: 'reason', header: 'Razón' },
                                     { key: 'count', header: 'Entradas', type: 'number', decimals: 0 },
                                     { key: 'quantity', header: 'Unidades', type: 'qty' },
                                     { key: 'unit', header: 'Unidad' },
-                                    { key: 'cost', header: 'Costo', type: 'money', render: (item) => formatCurrency(item.cost, settings) },
+                                    { key: 'cost', header: `Costo (${getCurrencySymbol(settings)})`, type: 'money', accessor: (item) => item.cost },
                                 ] as Column<(typeof report.byReason)[number]>[]}
                             />
                         </FormSection>

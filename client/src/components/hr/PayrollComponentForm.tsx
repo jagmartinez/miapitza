@@ -1,8 +1,8 @@
-import { AppSelect, Button, Checkbox, Input, Textarea } from '@/ui';
+import { AppSelect, Button, Checkbox, Field, Input, Textarea } from '@/ui';
 import HrMoneyInput from './HrMoneyInput';
 import HrModalFormShell from './HrModalFormShell';
 import PayrollOnlineNotice from './PayrollOnlineNotice';
-import { useState } from 'react';
+import { useState, useId } from 'react';
 import { CircleDollarSign } from 'lucide-react';
 import type { HrUserSummary } from '../../types/hr';
 import type { HrPayrollComponentPayload, HrPayrollPaymentConceptDefinition } from '../../types/hr-payroll';
@@ -26,6 +26,7 @@ export default function PayrollComponentForm({
   onSubmit,
   onCancel,
 }: PayrollComponentFormProps) {
+  const fid = useId();
   const [userId, setUserId] = useState('');
   const [code, setCode] = useState('');
   const [inputAmount, setInputAmount] = useState('');
@@ -60,24 +61,22 @@ export default function PayrollComponentForm({
       tabLabel="Concepto"
       sectionTitle="Colaborador, importe y clasificación legal"
       icon={<CircleDollarSign size={18} aria-hidden="true" />}
-      formClassName="hr-payroll-form"
       notice={<PayrollOnlineNotice online={online} compact />}
       onSubmit={(event) => void submit(event)}
       footer={<>
         <Button type="button" variant="ghost" onClick={onCancel} disabled={saving}>
           Cancelar
         </Button>
-        <Button variant="primary"
+        <Button loading={saving} variant="primary"
           type="submit"
           disabled={!online || saving || !userId || !selectedConcept || !inputAmount || !reason.trim() || !classificationConfirmed}
         >
-          {saving ? 'Agregando…' : 'Agregar componente'}
+          Agregar componente
         </Button>
       </>}
     >
-      <label>
-        Persona
-        <AppSelect<string>
+      <Field label="Persona" htmlFor={`${fid}-persona`}>
+        <AppSelect<string> inputId={`${fid}-persona`}
           options={[
             { value: '', label: 'Seleccionar…' },
             ...users.map((user) => ({
@@ -89,10 +88,9 @@ export default function PayrollComponentForm({
           onChange={(next) => setUserId(next ?? '')}
           isClearable={false}
         />
-      </label>
-      <label>
-        Concepto configurado
-        <AppSelect<string>
+      </Field>
+      <Field label="Concepto configurado" htmlFor={`${fid}-concepto-configurado`}>
+        <AppSelect<string> inputId={`${fid}-concepto-configurado`}
           options={[
             { value: '', label: 'Seleccionar…' },
             ...concepts.map((concept) => ({
@@ -107,15 +105,14 @@ export default function PayrollComponentForm({
           }}
           isClearable={false}
         />
-      </label>
-      <label>
-        Importe de entrada
-        <HrMoneyInput
+      </Field>
+      <Field label="Importe de entrada" htmlFor={`${fid}-importe-de-entrada`}>
+        <HrMoneyInput id={`${fid}-importe-de-entrada`}
           value={inputAmount}
           onValueChange={setInputAmount}
           required
         />
-      </label>
+      </Field>
       {selectedConcept && <fieldset className="span-full hr-payroll-component-classification">
         <legend>Tratamiento congelado del catálogo</legend>
         <span>Tipo: {selectedConcept.type === 'INCOME' ? 'Ingreso' : 'Deducción'}</span>
@@ -126,25 +123,25 @@ export default function PayrollComponentForm({
         <small>Fuente configurada: {selectedConcept.sourceReference}</small>
         <Checkbox checked={classificationConfirmed} onChange={(event) => setClassificationConfirmed(event.target.checked)} label={<>Confirmo que este es el concepto correcto; las banderas no pueden modificarse en la corrida.</>} />
       </fieldset>}
-      <label>
-        Referencia de soporte
-        <Input
+      <Field label="Referencia de soporte" htmlFor={`${fid}-referencia-de-soporte`}>
+        <Input id={`${fid}-referencia-de-soporte`}
           value={reference}
           onChange={(event) => setReference(event.target.value)}
           maxLength={500}
           placeholder={selectedConcept?.sourceReference}
         />
-      </label>
-      <label className="span-full">
-        Motivo
-        <Textarea
-          rows={4}
-          value={reason}
-          onChange={(event) => setReason(event.target.value)}
-          maxLength={700}
-          required
-        />
-      </label>
+      </Field>
+      <div className="span-full">
+        <Field label="Motivo" htmlFor={`${fid}-motivo`}>
+          <Textarea id={`${fid}-motivo`}
+            rows={4}
+            value={reason}
+            onChange={(event) => setReason(event.target.value)}
+            maxLength={700}
+            required
+          />
+        </Field>
+      </div>
       <p className="hr-payroll-help span-full">
         El importe es una entrada manual auditable. El servidor recalcula INSS, INATEC, IR y totales
         desde el catálogo congelado; la UI no permite alterar las banderas INSS o IR dentro de la corrida.

@@ -54,7 +54,6 @@ const EMPTY_SUMMARY: PortalSummary = {
 };
 
 const PENDING_WORKFLOW = new Set(['DRAFT', 'PENDING', 'REQUESTED', 'SUBMITTED']);
-const ACTIVE_BENEFIT = new Set(['REQUESTED', 'SUBMITTED', 'APPROVED', 'ADVANCED', 'IN_SETTLEMENT', 'DISBURSED', 'ACTIVE']);
 
 function dateOnlyToday(): string {
   const now = new Date();
@@ -134,7 +133,6 @@ export default function MyHrLanding() {
   }, [summary.workforce]);
 
   const vacation = selectVacationBalance(summary.workforce?.vacationBalances);
-  const activeBenefits = [...summary.travel, ...summary.loans].filter((item) => ACTIVE_BENEFIT.has(item.status)).length;
 
   const actions = [
     { to: '/rh/mi-portal/horario', icon: CalendarClock, title: 'Horario y turnos', text: 'Consulta tu calendario semanal y confirma los horarios publicados.' },
@@ -168,7 +166,7 @@ export default function MyHrLanding() {
                   ? 'No pudimos cargar el resumen. Tus secciones siguen disponibles desde los accesos de abajo.'
                   : 'Parte del resumen no está disponible. Puedes abrir cada sección para reintentarla.'}
               </span>
-              <Button size="sm" variant="ghost" icon={RefreshCw} onClick={() => void load()}>Reintentar</Button>
+              <Button variant="ghost" icon={RefreshCw} onClick={() => void load()}>Reintentar</Button>
             </div>
           )}
 
@@ -192,12 +190,6 @@ export default function MyHrLanding() {
               context={summary.latestReceipt?.periodLabel ?? 'Consulta tus colillas de pago'}
               action={{ label: 'Ver recibos', to: '/rh/mi-portal/nomina' }}
             />
-            <StatCard
-              label="Beneficios en curso"
-              value={summary.benefitsComplete ? formatNumber(activeBenefits, 0) : 'N/D'}
-              context="Viáticos y préstamos activos o en revisión"
-              action={{ label: 'Ver prestaciones', to: '/rh/mi-portal/prestaciones' }}
-            />
           </section>
         </>
       )}
@@ -210,7 +202,7 @@ export default function MyHrLanding() {
                 <span className={form.cellTitle}>{action.title}</span>
                 <span className={form.cellSub}>{action.text}</span>
               </span>
-              <Button size="sm" variant="ghost" icon={action.icon} onClick={() => navigate(action.to)}>Abrir</Button>
+              <Button variant="ghost" icon={action.icon} onClick={() => navigate(action.to)}>Abrir</Button>
             </li>
           ))}
         </ul>

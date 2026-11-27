@@ -15,7 +15,10 @@ vi.mock('../../services/api', () => ({
         getDashboardStats: vi.fn().mockResolvedValue({ data: { data: { todaySales: 1200, activeOrders: 3, pendingPurchaseOrders: 0, occupancyRate: 40, averageTicket: 300, settledOrdersCount: 4 } } }),
         getTodaysReservations: vi.fn().mockResolvedValue({ data: { data: [] } }),
     },
-    ordersAPI: { getKitchenQueue: vi.fn().mockResolvedValue({ data: { data: [] } }) },
+    ordersAPI: {
+        getKitchenQueue: vi.fn().mockResolvedValue({ data: { data: [] } }),
+        getActive: vi.fn().mockResolvedValue({ data: { data: [{ id: 77, tableId: 4, table: { id: 4, number: '4' }, status: 'SERVED', financialStatus: 'UNPAID', total: 450, invoiceNumber: 'F-1', createdAt: new Date(Date.now() - 30 * 60000).toISOString() }] } }),
+    },
     productsAPI: { getLowStock: vi.fn().mockResolvedValue({ data: { data: [{ name: 'Tomate' }] } }) },
 }));
 
@@ -109,6 +112,12 @@ describe('BiDashboard', () => {
         await userEvent.click(screen.getByRole('tab', { name: 'Operación en vivo' }));
         expect(await screen.findByText('Requiere atención')).toBeInTheDocument();
         expect(await screen.findByText(/1 productos bajo el mínimo: Tomate/)).toBeInTheDocument();
+        expect(await screen.findByText('Consumo abierto en mesas')).toBeInTheDocument();
+        expect(screen.getByText(/1 facturadas sin cobrar/)).toBeInTheDocument();
+        expect(screen.getByText('Mesa abierta más tiempo')).toBeInTheDocument();
+        expect(screen.getByText(/Mesa 4 · orden #77/)).toBeInTheDocument();
+        expect(screen.getAllByRole('link', { name: 'Ver mesas' }).some((l) => l.getAttribute('href') === '/tables')).toBe(true);
+        expect(screen.queryByText(/No disponible/)).toBeNull();
     });
 
     it('"Guardar vista" persiste en localStorage bi.views', async () => {

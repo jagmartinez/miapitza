@@ -2,21 +2,21 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { productionOrdersAPI, productsAPI, warehousesAPI, branchesAPI } from '../services/api';
 import {
     AppSelect, Badge, Button, Checkbox, ConfirmDialog, DataTable, DateInput, EmptyState, Field, FormGrid, FormSection, FullScreenModal, IconButton, Input,
-    PageContent, PageHeader, SegmentedControl, Skeleton, StatCard, TableToolbar, Textarea, formatNumber, formatPercent,
-    type Column, type Opt, type Tone, LoadErrorState,
+    PageContent, PageHeader, Skeleton, TableToolbar, Tabs, Textarea, formatNumber, formatPercent,
+    type Column, type Opt, type Tone, LoadErrorState, Tooltip,
 } from '@/ui';
 import { useCurrency } from '../hooks/useCurrency';
 import { useAuth } from '../hooks/useAuth';
 import { useAppToast } from '../context/ToastContext';
 import { getUserRoleNames } from '../utils/authz';
 import {
-    Factory, Plus, Eye, CheckCircle, Ban, Play, Clock, Calculator,
-    AlertTriangle, Save, Info
+    Factory, Plus, Eye, CheckCircle, CheckCircle2, Ban, Play, Clock, Calculator,
+    AlertTriangle, Save, Info, Search
 } from 'lucide-react';
 import type {
     ProductionOrder, ProductionOrderItem, ProductionOrderStatus, ProductionPreview, ProductionRequirementLine, Product, Warehouse, Branch
 } from '../types';
-import { costVariationOf, monthlyOverrun, monthlyYield } from './productionOrderInsights';
+import { costVariationOf } from './productionOrderInsights';
 import s from './Production.module.css';
 
 const PRODUCIBLE_TYPES = ['INTERMEDIATE', 'PRODUCT_FOR_SALE', 'BOTH'];
@@ -370,25 +370,22 @@ export default function ProductionOrders() {
     }));
     const branchOptions: Opt<string>[] = branches.map((b) => ({ value: b.id.toString(), label: b.name }));
 
-    const overrun = monthlyOverrun(orders);
-    const yieldInfo = monthlyYield(orders);
     const signed = (value: number) => `${value > 0 ? '+' : value < 0 ? '-' : ''}${formatNumber(Math.abs(value))}`;
 
     if (loading) {
         return (
             <PageContent>
-                <PageHeader title="Órdenes de producción" description="Cargando órdenes…" />
-                <Skeleton height={240} />
+                <PageHeader title="Órdenes de producción" description="Produce intermedios y terminados consumiendo insumos del inventario" />
+                <div role="status" aria-label="Cargando órdenes…"><Skeleton height={240} /></div>
             </PageContent>
         );
     }
 
     const columns: Column<ProductionOrder>[] = [
-        { key: 'code', header: 'Código', width: '1fr', render: (order) => <span className={s.cellTitle}>{order.code}</span> },
+        { key: 'code', header: 'Código / fecha', render: (order) => <><span className={s.cellTitle}>{order.code}</span><span className={s.cellSub}>{formatDate(order.date)}</span></> },
         {
             key: 'product',
             header: 'Producto',
-            width: '2fr',
             render: (order) => (
                 <div className={s.cellStack}>
                     <span className={s.cellTitle}>{order.product?.name ?? '-'}</span>
@@ -398,25 +395,22 @@ export default function ProductionOrders() {
         },
         {
             key: 'planned',
-            header: 'Cant. planificada',
+            header: 'Planificado',
             type: 'qty',
-            width: '1.2fr',
             hideBelow: 'md',
             render: (order) => `${formatNumber(order.plannedQuantity)} ${outputUnit(order.product)}`,
         },
         {
             key: 'produced',
-            header: 'Cant. producida',
+            header: 'Producido',
             type: 'qty',
-            width: '1.2fr',
             hideBelow: 'md',
             render: (order) => `${formatNumber(order.producedQuantity)} ${outputUnit(order.product)}`,
         },
         {
             key: 'yield',
-            header: 'Rendimiento',
+            header: 'Rend.',
             type: 'percent',
-            width: '1fr',
             hideBelow: 'md',
             render: (order) => {
                 const pct = yieldPct(order);
@@ -426,36 +420,32 @@ export default function ProductionOrders() {
         {
             key: 'status',
             header: 'Estado',
-            width: '1fr',
             type: 'status',
             render: (order) => <Badge tone={STATUS_META[order.status].tone}>{STATUS_META[order.status].label}</Badge>,
         },
         {
             key: 'estimated',
-            header: `Costo estimado (${symbol})`,
+            header: `Costo est. (${symbol})`,
             type: 'money',
-            width: '1.1fr',
             total: true,
             accessor: (order) => (order.status === 'FINISHED' ? Number(order.estimatedCost) || 0 : 0),
-            render: (order) => (Number(order.estimatedCost) > 0 ? formatNumber(order.estimatedCost) : <span className={s.nd} title="Sin costo estimado calculado">N/D</span>),
+            render: (order) => (Number(order.estimatedCost) > 0 ? formatNumber(order.estimatedCost) : <Tooltip label="Sin costo estimado calculado"><span tabIndex={0} className={s.nd}>N/D</span></Tooltip>),
         },
         {
             key: 'real',
             header: `Costo real (${symbol})`,
             type: 'money',
-            width: '1.1fr',
             total: true,
             accessor: (order) => (order.status === 'FINISHED' ? Number(order.realCost) || 0 : 0),
             render: (order) => {
                 if (order.status !== 'FINISHED') return <span className={s.nd}>-</span>;
-                return Number(order.realCost) > 0 ? formatNumber(order.realCost) : <span className={s.nd} title="La orden no registró costo real">N/D</span>;
+                return Number(order.realCost) > 0 ? formatNumber(order.realCost) : <Tooltip label="La orden no registró costo real"><span tabIndex={0} className={s.nd}>N/D</span></Tooltip>;
             },
         },
         {
             key: 'variation',
             header: 'Variación',
             type: 'money',
-            width: '1.2fr',
             hideBelow: 'lg',
             render: (order) => {
                 const v = costVariationOf(order);
@@ -463,21 +453,19 @@ export default function ProductionOrders() {
                 return <span className={v.delta > 0 ? s.bad : v.delta < 0 ? s.good : undefined}>{signed(v.delta)} ({formatPercent(v.pct)})</span>;
             },
         },
-        { key: 'date', header: 'Fecha', type: 'date', width: '1fr', hideBelow: 'lg', render: (order) => formatDate(order.date) },
-        { key: 'user', header: 'Responsable', width: '1.2fr', hideBelow: 'lg', render: (order) => order.user?.name ?? '-' },
         {
             key: 'actions',
             header: 'Acciones',
             type: 'actions',
-            width: '8rem',
+            width: '136px',
             render: (order) => (
                 <div className={s.rowActions}>
-                    <IconButton icon={Eye} size="sm" label={`Ver detalle de ${order.code}`} onClick={() => void handleOpenDetail(order.id)} />
+                    <IconButton icon={Eye} size="sm" tooltip="Ver detalle" label={`Ver detalle de ${order.code}`} onClick={() => void handleOpenDetail(order.id)} />
                     {canManage && canFinish(order.status) && (
-                        <IconButton icon={CheckCircle} size="sm" label="Finalizar producción" onClick={() => void handleOpenFinish(order.id)} />
+                        <IconButton icon={CheckCircle2} size="sm" tone="primary" tooltip="Finalizar" label="Finalizar producción" onClick={() => void handleOpenFinish(order.id)} />
                     )}
                     {canManage && canCancel(order.status) && (
-                        <IconButton icon={Ban} size="sm" label="Anular orden" onClick={() => { setCancelOrder(order); setCancelReason(''); }} />
+                        <IconButton icon={Ban} size="sm" tone="danger" tooltip="Anular" label="Anular orden" onClick={() => { setCancelOrder(order); setCancelReason(''); }} />
                     )}
                 </div>
             ),
@@ -488,58 +476,54 @@ export default function ProductionOrders() {
         {
             key: 'name',
             header: 'Insumo',
-            width: '2fr',
             render: (line) => (
                 <div className={s.cellStack}>
                     <span>{line.componentName}</span>
                     {!line.sufficient && line.producible && (
-                        <span className={s.cellSub} title="Este insumo se puede producir con una orden de producción">Se puede producir</span>
+                        <Tooltip label="Este insumo se puede producir con una orden de producción"><span tabIndex={0} className={s.cellSub}>Se puede producir</span></Tooltip>
                     )}
                 </div>
             ),
         },
-        { key: 'required', header: 'Requerido', type: 'qty', width: '1.2fr', render: (line) => `${formatNumber(line.requiredQuantity)} ${line.unit}` },
-        { key: 'available', header: 'Disponible', type: 'qty', width: '1.2fr', render: (line) => `${formatNumber(line.availableQuantity)} ${line.unit}` },
+        { key: 'required', header: 'Requerido', type: 'qty', render: (line) => `${formatNumber(line.requiredQuantity)} ${line.unit}` },
+        { key: 'available', header: 'Disponible', type: 'qty', render: (line) => `${formatNumber(line.availableQuantity)} ${line.unit}` },
         {
             key: 'state',
             header: 'Estado',
             type: 'status',
-            width: '1fr',
             render: (line) => <Badge tone={line.sufficient ? 'success' : 'danger'}>{line.sufficient ? 'Suficiente' : 'Faltante'}</Badge>,
         },
     ];
 
     const detailColumns: Column<ProductionOrderItem>[] = [
-        { key: 'name', header: 'Insumo', width: '2fr', render: (item) => item.componentProduct?.name ?? `#${item.componentProductId}` },
-        { key: 'required', header: 'Requerido', type: 'qty', width: '1.2fr', render: (item) => `${formatNumber(item.requiredQuantity)} ${unitOf(item)}` },
-        { key: 'consumed', header: 'Consumido', type: 'qty', width: '1.2fr', render: (item) => `${formatNumber(item.consumedQuantity)} ${unitOf(item)}` },
+        { key: 'name', header: 'Insumo', render: (item) => item.componentProduct?.name ?? `#${item.componentProductId}` },
+        { key: 'required', header: 'Requerido', type: 'qty', render: (item) => `${formatNumber(item.requiredQuantity)} ${unitOf(item)}` },
+        { key: 'consumed', header: 'Consumido', type: 'qty', render: (item) => `${formatNumber(item.consumedQuantity)} ${unitOf(item)}` },
         {
             key: 'unitCost',
             header: `Costo unit. (${symbol})`,
             type: 'money',
-            width: '1fr',
             render: (item) => (Number(item.unitCost) > 0 ? formatNumber(item.unitCost) : <span className={s.nd}>N/D</span>),
         },
         {
             key: 'totalCost',
             header: `Costo total (${symbol})`,
             type: 'money',
-            width: '1fr',
             render: (item) => (Number(item.totalCost) > 0 ? formatNumber(item.totalCost) : <span className={s.nd}>N/D</span>),
         },
     ];
 
     const finishColumns: Column<ProductionOrderItem>[] = [
-        { key: 'name', header: 'Insumo', width: '2fr', render: (item) => item.componentProduct?.name ?? `#${item.componentProductId}` },
-        { key: 'required', header: 'Requerido', type: 'qty', width: '1.2fr', render: (item) => `${formatNumber(item.requiredQuantity)} ${unitOf(item)}` },
+        { key: 'name', header: 'Insumo', render: (item) => item.componentProduct?.name ?? `#${item.componentProductId}` },
+        { key: 'required', header: 'Requerido', type: 'qty', render: (item) => `${formatNumber(item.requiredQuantity)} ${unitOf(item)}` },
         {
             key: 'consumed',
             header: 'Consumo real',
             type: 'qty',
-            width: '1.4fr',
             render: (item) => (
                 <Input
                     type="number"
+                    className="ui-input--number"
                     min={0}
                     step="any"
                     aria-label={`Consumo real de ${item.componentProduct?.name ?? item.componentProductId}`}
@@ -558,29 +542,41 @@ export default function ProductionOrders() {
                 actions={<Button variant="primary" icon={Plus} onClick={handleOpenCreate} disabled={!canManage}>Nueva producción</Button>}
             />
 
-            {loadError && <LoadErrorState message={loadError} onRetry={() => { void loadOrders(); }} />}
+            <Tabs
+                ariaLabel="Filtrar por estado"
+                active={statusFilter}
+                onChange={setStatusFilter}
+                tabs={STATUS_FILTERS.map(({ value, label }) => ({
+                    id: value,
+                    label,
+                    badge: loadError ? undefined : value === 'all' ? orders.length : orders.filter((order) => order.status === value).length,
+                }))}
+            />
 
-            {(overrun || yieldInfo) && (
-                <div className={s.stats}>
-                    {overrun && (
-                        <StatCard
-                            label="Sobrecosto del mes"
-                            value={`${overrun.overrun > 0 ? '+' : ''}${formatMoney(overrun.overrun)}`}
-                            context={`Real ${formatMoney(overrun.real)} vs estimado ${formatMoney(overrun.estimated)} (${formatPercent(overrun.pct)}) en ${overrun.count} órdenes finalizadas.${overrun.excluded > 0 ? ` ${overrun.excluded} sin costo estimado o real quedan fuera.` : ''}`}
-                            tone={overrun.overrun > 0 ? 'danger' : 'success'}
-                        />
-                    )}
-                    {yieldInfo && (
-                        <StatCard
-                            label="Rendimiento real vs estándar"
-                            value={formatPercent(yieldInfo.avgPct)}
-                            context={`Promedio de ${yieldInfo.count} órdenes finalizadas este mes frente a lo planificado por la receta. La más baja: ${yieldInfo.lowest.code} (${formatPercent(yieldInfo.lowest.pct)}).`}
-                            tone={yieldInfo.avgPct < 95 ? 'warning' : 'success'}
-                        />
-                    )}
-                </div>
-            )}
+            <TableToolbar>
+                <Input
+                    type="search"
+                    aria-label="Buscar orden"
+                    prefix={<Search size={14} aria-hidden="true" />}
+                    placeholder="Buscar por código o producto..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                />
+                <DateInput aria-label="Desde" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+                <DateInput aria-label="Hasta" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+                <AppSelect
+                    aria-label="Filtrar por receta"
+                    options={recipeOptions}
+                    value={recipeFilter}
+                    onChange={setRecipeFilter}
+                    placeholder="Todas las recetas"
+                    isClearable
+                />
+            </TableToolbar>
 
+            {loadError ? (
+                <LoadErrorState message={loadError} onRetry={() => { void loadOrders(); }} />
+            ) : (
             <DataTable<ProductionOrder>
                 ariaLabel="Órdenes de producción"
                 columns={columns}
@@ -588,35 +584,10 @@ export default function ProductionOrders() {
                 rowKey={(order) => order.id}
                 resetKey={`${statusFilter}-${searchQuery}-${dateFrom}-${dateTo}-${recipeFilter}`}
                 footerLabel="Total finalizadas (página)"
-                toolbar={(
-                    <div className={s.toolbarStack}>
-                        <TableToolbar>
-                            <Input
-                                type="search"
-                                aria-label="Buscar orden"
-                                placeholder="Buscar por código o producto..."
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                            />
-                            <DateInput aria-label="Desde" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
-                            <DateInput aria-label="Hasta" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
-                            <AppSelect
-                                aria-label="Filtrar por receta"
-                                options={recipeOptions}
-                                value={recipeFilter}
-                                onChange={setRecipeFilter}
-                                placeholder="Todas las recetas"
-                                isClearable
-                            />
-                        </TableToolbar>
-                        <div className={s.segmentWrap}>
-                            <SegmentedControl ariaLabel="Filtrar por estado" size="sm" value={statusFilter} onChange={setStatusFilter} options={STATUS_FILTERS} />
-                        </div>
-                    </div>
-                )}
                 onRowClick={(order) => void handleOpenDetail(order.id)}
                 empty={<EmptyState icon={Factory} title="No se encontraron órdenes de producción" />}
             />
+            )}
 
             <FullScreenModal
                 isOpen={isSidebarOpen}
@@ -625,19 +596,14 @@ export default function ProductionOrders() {
                 footer={({ requestClose }) => (
                     <>
                         <Button variant="ghost" onClick={requestClose}>Cancelar</Button>
-                        <Button variant="primary" icon={Save} loading={creating} disabled={creating} onClick={() => void handleCreate()}>
-                            {creating ? 'Creando...' : 'Crear orden'}
+                        <Button variant="primary" icon={Save} loading={creating} onClick={() => void handleCreate()}>
+                            Crear orden
                         </Button>
                     </>
                 )}
             >
                 <div className={s.form}>
-                    {formError && (
-                        <div className={s.banner} role="alert">
-                            <span>{formError}</span>
-                            <Button size="sm" onClick={() => void loadFormDependencies()}>Reintentar</Button>
-                        </div>
-                    )}
+                    {formError && <LoadErrorState message={formError} onRetry={() => void loadFormDependencies()} />}
                     <FormSection title="Datos de la producción">
                         <FormGrid>
                             <Field label="Producto a producir" htmlFor="prod-product" required>
@@ -672,6 +638,7 @@ export default function ProductionOrders() {
                             <Field label="Cantidad a producir" htmlFor="prod-quantity" required hint="En la unidad base del producto">
                                 <Input
                                     id="prod-quantity"
+                                    className="ui-input--number"
                                     type="number"
                                     min={0.001}
                                     step="any"
@@ -697,9 +664,10 @@ export default function ProductionOrders() {
                                 variant="ghost"
                                 icon={Calculator}
                                 onClick={() => { void runPreview(); }}
-                                disabled={previewLoading || !createForm.productId || !createForm.warehouseId}
+                                loading={previewLoading}
+                                disabled={!createForm.productId || !createForm.warehouseId}
                             >
-                                {previewLoading ? 'Calculando...' : 'Calcular insumos'}
+                                Calcular insumos
                             </Button>
                         </div>
 
@@ -733,23 +701,20 @@ export default function ProductionOrders() {
                                     rows={preview.requirements}
                                     rowKey={(line) => line.componentProductId}
                                     minWidth="32rem"
+                                    hidePaginationIfSinglePage
                                     rowTone={(line) => (line.sufficient ? undefined : 'danger')}
                                 />
 
-                                <div className={s.stats}>
-                                    <StatCard
-                                        label="Costo estimado total"
-                                        value={Number(preview.estimatedCost) > 0 ? formatMoney(preview.estimatedCost) : 'N/D'}
-                                        context="Con el costo efectivo vigente de cada insumo."
-                                        tone="primary"
-                                    />
-                                    <StatCard
-                                        label="Costo unitario estimado"
-                                        value={Number(preview.estimatedUnitCost) > 0 ? formatMoney(preview.estimatedUnitCost) : 'N/D'}
-                                        context="Costo total entre las unidades base que rinde la orden."
-                                        tone="neutral"
-                                    />
-                                </div>
+                                <dl className={s.facts} aria-label="Costo estimado de la orden">
+                                    <div>
+                                        <dt>Costo estimado total</dt>
+                                        <dd>{Number(preview.estimatedCost) > 0 ? formatMoney(preview.estimatedCost) : 'N/D'}</dd>
+                                    </div>
+                                    <div>
+                                        <dt>Costo unitario estimado</dt>
+                                        <dd>{Number(preview.estimatedUnitCost) > 0 ? formatMoney(preview.estimatedUnitCost) : 'N/D'}</dd>
+                                    </div>
+                                </dl>
                             </>
                         )}
                     </FormSection>
@@ -828,7 +793,8 @@ export default function ProductionOrders() {
                                 rows={detailOrder.items}
                                 rowKey={(item) => item.id}
                                 minWidth="36rem"
-                                empty={<EmptyState title="Sin insumos registrados" />}
+                                hidePaginationIfSinglePage
+                                empty="Sin insumos registrados"
                             />
                         </FormSection>
                     </div>
@@ -843,8 +809,8 @@ export default function ProductionOrders() {
                 footer={({ requestClose }) => (
                     <>
                         <Button variant="ghost" onClick={requestClose}>Cancelar</Button>
-                        <Button variant="primary" icon={CheckCircle} loading={finishing} disabled={finishing} onClick={() => void handleFinish()}>
-                            {finishing ? 'Finalizando...' : 'Finalizar producción'}
+                        <Button variant="primary" icon={CheckCircle} loading={finishing} onClick={() => void handleFinish()}>
+                            Finalizar producción
                         </Button>
                     </>
                 )}
@@ -861,6 +827,7 @@ export default function ProductionOrders() {
                                 >
                                     <Input
                                         id="finish-produced"
+                                        className="ui-input--number"
                                         type="number"
                                         min={0.001}
                                         step="any"
@@ -878,7 +845,8 @@ export default function ProductionOrders() {
                                 rows={finishOrder.items}
                                 rowKey={(item) => item.id}
                                 minWidth="32rem"
-                                empty={<EmptyState title="Sin insumos registrados" />}
+                                hidePaginationIfSinglePage
+                                empty="Sin insumos registrados"
                             />
                         </FormSection>
 
@@ -907,7 +875,7 @@ export default function ProductionOrders() {
                 isOpen={!!cancelOrder}
                 title={cancelOrder ? `Anular ${cancelOrder.code}` : 'Anular orden'}
                 tone="danger"
-                confirmLabel={cancelling ? 'Anulando...' : 'Anular orden'}
+                confirmLabel="Anular orden"
                 loading={cancelling}
                 onCancel={() => setCancelOrder(null)}
                 onConfirm={() => void handleCancel()}

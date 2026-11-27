@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { Clock3, Edit2, Palette, Power, RotateCcw } from 'lucide-react';
+import { Clock3, Pencil, Palette, Power } from 'lucide-react';
 import { Badge, Button, DataTable, EmptyState, Field, IconButton, Input, Textarea, type Column } from '@/ui';
 import styles from './hrForm.module.css';
 import HrModalFormShell from './HrModalFormShell';
@@ -86,6 +86,7 @@ export function ShiftTemplateCatalog({
         {
             key: 'hours',
             header: 'Horario',
+            type: 'time',
             render: (template) => `${template.startTime.slice(0, 5)}–${template.endTime.slice(0, 5)}${template.crossesMidnight ? ' (+1 día)' : ''}`,
         },
         { key: 'break', header: 'Descanso', type: 'number', render: (template) => ((template.breakMinutes ?? 0) > 0 ? `${template.breakMinutes} min` : '—') },
@@ -98,18 +99,22 @@ export function ShiftTemplateCatalog({
         {
             key: 'status',
             header: 'Estado',
+            type: 'status',
             render: (template) => <Badge tone={template.active === false ? 'neutral' : 'success'} dot>{template.active === false ? 'Inactiva' : 'Activa'}</Badge>,
         },
         ...(canManage ? [{
             key: 'actions',
             header: 'Acciones',
             type: 'actions' as const,
+            width: '100px',
             render: (template: HrShiftTemplate) => (
                 <div className={styles.rowActions}>
-                    <IconButton icon={Edit2} size="sm" label={`Editar jornada ${template.name}`} onClick={() => onEdit(template)} disabled={disabled} />
+                    <IconButton icon={Pencil} size="sm" tooltip="Editar" label={`Editar jornada ${template.name}`} onClick={() => onEdit(template)} disabled={disabled} />
                     <IconButton
-                        icon={template.active === false ? RotateCcw : Power}
+                        icon={Power}
                         size="sm"
+                        tone={template.active === false ? 'primary' : 'danger'}
+                        tooltip={template.active === false ? 'Activar' : 'Desactivar'}
                         label={`${template.active === false ? 'Reactivar' : 'Desactivar'} jornada ${template.name}`}
                         onClick={() => onToggleActive(template)}
                         disabled={disabled}
@@ -133,7 +138,7 @@ export function ShiftTemplateCatalog({
                     icon={Palette}
                     title="No hay jornadas configuradas."
                     description="Crea una jornada reutilizable para comenzar a asignar horarios."
-                    action={canManage ? <Button variant="primary" size="sm" onClick={onCreate} disabled={disabled}>Crear la primera jornada</Button> : undefined}
+                    action={canManage ? <Button variant="primary" onClick={onCreate} disabled={disabled}>Crear la primera jornada</Button> : undefined}
                 />
             )}
         />

@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useRef, useState, type ChangeEvent } from 'react';
+import { useCallback, useEffect, useState, type ChangeEvent } from 'react';
 import { Database, Truck, Upload } from 'lucide-react';
-import { Button, NumberInput, Switch } from '@/ui';
+import { Button, DataTable, EmptyState, LoadErrorState, NumberInput, Switch, type Column } from '@/ui';
 import { backupAPI, salesChannelsAPI, uploadAPI } from '../../services/api';
 import { useAppToast } from '../../context/ToastContext';
 import { useAuth } from '../../hooks/useAuth';
@@ -61,17 +61,17 @@ export function SalesChannelsPanel() {
   const toast = useAppToast();
   const [channels, setChannels] = useState<SalesChannelConfig[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [savingChannel, setSavingChannel] = useState<string | null>(null);
-  const toastRef = useRef(toast);
-  toastRef.current = toast;
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const res = await salesChannelsAPI.getAll();
       setChannels(res.data.data || []);
     } catch (err) {
-      toastRef.current.error(getApiErrorMessage(err, 'No se pudieron cargar los canales de venta'));
+      setLoadError(getApiErrorMessage(err, 'No se pudieron cargar los canales de venta'));
     } finally {
       setLoading(false);
     }
@@ -109,43 +109,54 @@ export function SalesChannelsPanel() {
     }
   };
 
+  const columns: Column<SalesChannelConfig>[] = [
+    { key: 'channel', header: 'Canal', render: (ch) => <strong>{CHANNEL_LABEL[ch.channel] ?? ch.channel.replace('_', ' ')}</strong> },
+    {
+      key: 'isActive', header: 'Estado', type: 'status',
+      render: (ch) => <Switch label={ch.isActive ? 'Activo' : 'Inactivo'} checked={ch.isActive} onChange={(v) => update(channels.indexOf(ch), { isActive: v })} />,
+    },
+    {
+      key: 'priceMarkupPct', header: 'Recargo de precio', type: 'percent', align: 'right',
+      render: (ch) => <NumberInput aria-label={`Recargo de precio ${ch.channel}`} value={ch.priceMarkupPct} min={0} suffix="%" onChange={(v) => update(channels.indexOf(ch), { priceMarkupPct: Math.min(v ?? 0, 100) })} />,
+    },
+    {
+      key: 'commissionPct', header: 'Comisión del canal', type: 'percent', align: 'right',
+      render: (ch) => <NumberInput aria-label={`Comisión ${ch.channel}`} value={ch.commissionPct} min={0} suffix="%" onChange={(v) => update(channels.indexOf(ch), { commissionPct: Math.min(v ?? 0, 100) })} />,
+    },
+    {
+      key: 'actions', header: 'Acciones', type: 'actions', width: '8rem',
+      render: (ch) => <Button loading={savingChannel === ch.channel} onClick={() => void save(ch)}>Guardar</Button>,
+    },
+  ];
+
   return (
     <div className="settings-extra">
       <div className="settings-extra__text">
         <strong>Comisión y recargo por canal</strong>
         <span>Recargo de precio y comisión de cada canal (PedidosYa, delivery propio, etc.).</span>
       </div>
-      {loading ? <p className="settings-page__empty">Cargando canales…</p> : channels.length === 0 ? (
+      {loading ? <p className="settings-page__empty">Cargando canales…</p> : loadError ? (
+        <LoadErrorState message={loadError} onRetry={() => void load()} />
+      ) : channels.length === 0 ? (
         <div className="settings-extra__actions">
           <p className="settings-page__empty">No hay canales configurados. Crea los canales predeterminados para comenzar.</p>
           <Button variant="primary" icon={Truck} onClick={() => void ensureDefaults()}>Crear canales por defecto</Button>
         </div>
       ) : (
-        <ul className="settings-extra__channels">
-          {channels.map((ch, idx) => (
-            <li key={ch.channel} className={ch.isActive ? '' : 'is-inactive'}>
-              <div className="settings-extra__channel-head">
-                <strong>{ch.channel.replace('_', ' ')}</strong>
-                <Switch label="Activo" checked={ch.isActive} onChange={(v) => update(idx, { isActive: v })} />
-              </div>
-              <div className="settings-extra__channel-fields">
-                <label>
-                  <span>Recargo de precio</span>
-                  <NumberInput aria-label={`Recargo de precio ${ch.channel}`} value={ch.priceMarkupPct} min={0} suffix="%" onChange={(v) => update(idx, { priceMarkupPct: Math.min(v ?? 0, 100) })} />
-                </label>
-                <label>
-                  <span>Comisión del canal</span>
-                  <NumberInput aria-label={`Comisión ${ch.channel}`} value={ch.commissionPct} min={0} suffix="%" onChange={(v) => update(idx, { commissionPct: Math.min(v ?? 0, 100) })} />
-                </label>
-              </div>
-              <Button loading={savingChannel === ch.channel} onClick={() => void save(ch)}>Guardar canal</Button>
-            </li>
-          ))}
-        </ul>
+        <DataTable<SalesChannelConfig>
+          ariaLabel="Comisión y recargo por canal"
+          rows={channels}
+          rowKey={(ch) => ch.channel}
+          columns={columns}
+          hidePaginationIfSinglePage
+          empty={<EmptyState title="Sin canales" />}
+        />
       )}
     </div>
   );
 }
+
+const CHANNEL_LABEL: Record<string, string> = { RESTAURANT: 'Restaurante', DELIVERY: 'Delivery propio', PEDIDOSYA: 'PedidosYa', TAKEOUT: 'Para llevar' };
 
 /** Respaldo manual de la base de datos: solo SUPERADMIN. */
 export function BackupPanel() {

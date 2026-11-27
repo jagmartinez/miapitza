@@ -1,6 +1,6 @@
-import { AppSelect, Button, Checkbox, DateInput, Input, Textarea } from '@/ui';
+import { AppSelect, Button, Checkbox, DateInput, Field, Input, Textarea } from '@/ui';
 import HrMoneyInput from './HrMoneyInput';
-import { useState } from 'react';
+import { useState, useId } from 'react';
 import { FileCheck2 } from 'lucide-react';
 import HrModalFormShell from './HrModalFormShell';
 import type { HrTravelExpensePayload } from '../../types/hr-benefits';
@@ -18,6 +18,7 @@ export default function TravelExpenseForm({
   onSubmit,
   onCancel,
 }: TravelExpenseFormProps) {
+  const fid = useId();
   const [form, setForm] = useState<HrTravelExpensePayload>({
     category: 'ALIMENTACION',
     description: '',
@@ -61,15 +62,14 @@ export default function TravelExpenseForm({
           <Button type="button" variant="ghost" onClick={onCancel} disabled={saving}>
             Cancelar
           </Button>
-          <Button variant="primary" type="submit" disabled={!online || saving || !confirmed}>
-            {saving ? 'Registrando…' : 'Registrar gasto'}
+          <Button loading={saving} variant="primary" type="submit" disabled={!online || saving || !confirmed}>
+            Registrar gasto
           </Button>
         </>
       }
     >
-      <label>
-        Categoría
-        <AppSelect<string>
+      <Field label="Categoría" htmlFor={`${fid}-categoria`}>
+        <AppSelect<string> inputId={`${fid}-categoria`}
           options={[
             { value: 'ALIMENTACION', label: 'Alimentación' },
             { value: 'TRANSPORTE', label: 'Transporte' },
@@ -80,10 +80,9 @@ export default function TravelExpenseForm({
           onChange={(next) => setForm((current) => ({ ...current, category: next ?? '' }))}
           isClearable={false}
         />
-      </label>
-      <label>
-        Fecha
-        <DateInput
+      </Field>
+      <Field label="Fecha" htmlFor={`${fid}-fecha`}>
+        <DateInput id={`${fid}-fecha`}
          
           value={form.occurredOn}
           onChange={(event) =>
@@ -91,10 +90,9 @@ export default function TravelExpenseForm({
           }
           required
         />
-      </label>
-      <label>
-        Moneda
-        <AppSelect<string>
+      </Field>
+      <Field label="Moneda" htmlFor={`${fid}-moneda`}>
+        <AppSelect<string> inputId={`${fid}-moneda`}
           options={[
             { value: 'NIO', label: 'NIO' },
             { value: 'USD', label: 'USD' },
@@ -103,58 +101,57 @@ export default function TravelExpenseForm({
           onChange={(next) => setForm((current) => ({ ...current, currency: next ?? '' }))}
           isClearable={false}
         />
-      </label>
-      <label>
-        Monto reclamado
-        <HrMoneyInput
+      </Field>
+      <Field label="Monto reclamado" htmlFor={`${fid}-monto-reclamado`}>
+        <HrMoneyInput id={`${fid}-monto-reclamado`}
           value={form.claimedAmount}
           onValueChange={(claimedAmount) =>
             setForm((current) => ({ ...current, claimedAmount }))
           }
           required
         />
-      </label>
-      <label className="span-full">
-        Referencia de factura o soporte
-        <Input
-          value={form.receiptReference ?? ''}
-          onChange={(event) =>
-            setForm((current) => ({ ...current, receiptReference: event.target.value }))
-          }
-          maxLength={160}
-        />
-      </label>
-      <label className="span-full">
-        ID de evidencia segura
-        <Input
-          type="number"
-          min="1"
-          inputMode="numeric"
-          value={form.evidenceId ?? ''}
-          onChange={(event) =>
-            setForm((current) => ({
-              ...current,
-              evidenceId: event.target.value ? Number(event.target.value) : undefined,
-            }))
-          }
-          aria-describedby="evidence-help"
-        />
-        <small id="evidence-help">
-          Opcional. Usa el identificador emitido por el flujo seguro de documentos.
-        </small>
-      </label>
-      <label className="span-full">
-        Descripción
-        <Textarea
-          rows={4}
-          value={form.description}
-          onChange={(event) =>
-            setForm((current) => ({ ...current, description: event.target.value }))
-          }
-          maxLength={600}
-          required
-        />
-      </label>
+      </Field>
+      <div className="span-full">
+        <Field label="Referencia de factura o soporte" htmlFor={`${fid}-referencia-de-factura-o`}>
+          <Input id={`${fid}-referencia-de-factura-o`}
+            value={form.receiptReference ?? ''}
+            onChange={(event) =>
+              setForm((current) => ({ ...current, receiptReference: event.target.value }))
+            }
+            maxLength={160}
+          />
+        </Field>
+      </div>
+      <div className="span-full">
+        <Field label="ID de evidencia segura" htmlFor={`${fid}-id-de-evidencia-segura`} hint="Opcional. Usa el identificador emitido por el flujo seguro de documentos.">
+          <Input id={`${fid}-id-de-evidencia-segura`}
+            type="number"
+            min="1"
+            inputMode="numeric"
+            value={form.evidenceId ?? ''}
+            onChange={(event) =>
+              setForm((current) => ({
+                ...current,
+                evidenceId: event.target.value ? Number(event.target.value) : undefined,
+              }))
+            }
+            aria-describedby="evidence-help"
+          />
+        </Field>
+      </div>
+      <div className="span-full">
+        <Field label="Descripción" htmlFor={`${fid}-descripcion`}>
+          <Textarea id={`${fid}-descripcion`}
+            rows={4}
+            value={form.description}
+            onChange={(event) =>
+              setForm((current) => ({ ...current, description: event.target.value }))
+            }
+            maxLength={600}
+            required
+          />
+        </Field>
+      </div>
       <Checkbox className="span-full" checked={confirmed}
           onChange={(event) => setConfirmed(event.target.checked)} label={<><span>Confirmo que el gasto y su referencia coinciden con el soporte.</span></>} />
     </HrModalFormShell>

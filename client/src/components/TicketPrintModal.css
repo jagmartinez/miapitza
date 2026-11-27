@@ -1,17 +1,37 @@
-.ticket-print-content,
-.ticket-print-body {
+.ticket-print-content {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-lg);
+  gap: var(--ui-space-4);
 }
 
-.ticket-print-body > div[style*="color"] {
-  border: 1px solid color-mix(in srgb, var(--ui-danger) 35%, transparent);
-  background: color-mix(in srgb, var(--ui-danger) 9%, var(--ui-surface)) !important;
+.ticket-print-error {
+  margin: 0;
+  padding-left: var(--ui-space-3);
+  border-left: 3px solid var(--ui-danger);
+  color: var(--ui-danger);
+  font-size: var(--ui-text-sm);
 }
 
-.ticket-print-body > div[style*="font-family"] {
-  border-radius: var(--radius-xl) !important;
-  box-shadow: inset 0 0 0 4px color-mix(in srgb, var(--ui-border) 35%, transparent);
+.ticket-print-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ui-space-2);
+  padding: var(--ui-space-6);
+  color: var(--ui-text-muted);
+}
+
+/* El ticket simula el papel impreso: esquema claro con los colores del sistema en ambos temas. */
+.ticket-print-preview {
+  color-scheme: light;
+  max-height: 400px;
+  overflow-y: auto;
   overscroll-behavior: contain;
+  padding: var(--ui-space-4);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-md);
+  background: Canvas;
+  color: CanvasText;
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
 }

@@ -4,11 +4,14 @@ import {
     Calendar, Users, Plus, MapPin, FileText,
     Download,
     Trash2, AlertCircle, DollarSign, ConciergeBell,
-    Grid3x3, List, CalendarDays, ChevronLeft, ChevronRight, Phone,
-    Eye
+    ChevronLeft, ChevronRight, Phone,
+    Eye, Undo2, LayoutGrid, Table2, CalendarDays
 } from 'lucide-react';
-import { AppSelect, Button, DataTable, Field, FullScreenModal, PageHeader, type Column } from '@/ui';
-import LoadingSpinner from '../components/LoadingSpinner';
+import {
+    AppSelect, Badge, Button, Checkbox, DataTable, DateInput, EmptyState, Field, FormGrid, FormSection, FullScreenModal, IconButton,
+    Input, LoadErrorState, NumberInput, PageContent, PageHeader, SegmentedControl, Skeleton, TableToolbar, Tabs, Textarea,
+    formatQty, type Column, type Tone,
+} from '@/ui';
 import { cateringAPI, menuAPI, paymentsAPI, branchesAPI, settingsAPI, warehousesAPI } from '../services/api';
 import { getCateringStatusOptions, isCateringStatusTerminal } from '../utils/cateringStatus';
 import { useAuth } from '../hooks/useAuth';
@@ -21,7 +24,6 @@ import { useCurrency } from '../hooks/useCurrency';
 import { formatLocalDateInput } from '../utils/dateInput';
 import { newIdempotencyKey } from '../utils/idempotency';
 import { filterMenuItemsByCategory, getMenuCategoryOptions } from '../utils/cateringMenuFilter';
-import { activateOnKeyboard } from '../utils/keyboardActivation';
 import './CateringMod.css';
 import { getApiErrorMessage } from '../utils/apiError';
 
@@ -77,13 +79,14 @@ interface CateringInventoryPreviewLine {
 }
 
 const FINISH_PREVIEW_COLUMNS: Column<CateringInventoryPreviewLine>[] = [
-    { key: 'productName', header: 'Ingrediente' },
-    { key: 'warehouseName', header: 'Bodega', render: (line) => `${line.warehouseName}${line.routed ? ' (regla)' : ''}` },
-    { key: 'required', header: 'Requerido', render: (line) => `${line.required} ${line.unit ?? ''}` },
+    { key: 'productName', header: 'Ingrediente', type: 'text' },
+    { key: 'warehouseName', header: 'Bodega', type: 'text', render: (line) => `${line.warehouseName}${line.routed ? ' (regla)' : ''}` },
+    { key: 'required', header: 'Requerido', type: 'qty', render: (line) => `${formatQty(line.required)} ${line.unit ?? ''}` },
     {
         key: 'available',
         header: 'Disponible',
-        render: (line) => `${line.available} ${line.unit ?? ''}${line.shortage > 0 ? ` (faltan ${line.shortage})` : ''}`,
+        type: 'qty',
+        render: (line) => `${formatQty(line.available)} ${line.unit ?? ''}${line.shortage > 0 ? ` (faltan ${formatQty(line.shortage)})` : ''}`,
     },
 ];
 
@@ -131,6 +134,14 @@ type CateringEventDetail = CateringEvent & {
 };
 
 type CateringViewMode = 'grid' | 'table' | 'calendar';
+interface ItemRow<T> { item: T; index: number }
+const STATUS_TONE: Record<CateringEvent['status'], Tone> = {
+    QUOTED: 'neutral',
+    RESERVED: 'warning',
+    PAID: 'success',
+    FINISHED: 'primary',
+    CANCELLED: 'danger',
+};
 type CateringTab = 'info' | 'logistics' | 'services' | 'menu' | 'clauses' | 'financial';
 
 interface InventoryAvailabilityAlert {
@@ -142,7 +153,7 @@ interface InventoryAvailabilityAlert {
 }
 
 function formatAvailabilityAlert(alert: InventoryAvailabilityAlert): string {
-    return `${alert.productName}: requiere ${alert.required}, disponible ${alert.available}, déficit ${alert.deficit}`;
+    return `${alert.productName}: requiere ${formatQty(alert.required)}, disponible ${formatQty(alert.available)}, déficit ${formatQty(alert.deficit)}`;
 }
 
 async function contractDownloadError(error: unknown): Promise<string> {
@@ -187,6 +198,7 @@ export default function Catering() {
     const canManageCatering = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN'].includes(role));
     const [events, setEvents] = useState<CateringEvent[]>([]);
     const [loading, setLoading] = useState(true);
+    const [eventsError, setEventsError] = useState<string | null>(null);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [savingEvent, setSavingEvent] = useState(false);
     const [selectedEvent, setSelectedEvent] = useState<CateringEvent | null>(null);
@@ -209,7 +221,6 @@ export default function Catering() {
     const [availabilityAlerts, setAvailabilityAlerts] = useState<InventoryAvailabilityAlert[]>([]);
     const [settings, setSettings] = useState<CateringCompanySettings>({});
     const [contractPdfBusyId, setContractPdfBusyId] = useState<number | null>(null);
-    const [contractPdfError, setContractPdfError] = useState<string | null>(null);
 
     const [formData, setFormData] = useState({
         title: '',
@@ -242,6 +253,7 @@ export default function Catering() {
         paymentMethodId: ''
     });
     const [addingPayment, setAddingPayment] = useState(false);
+    const [reversingPaymentId, setReversingPaymentId] = useState<number | null>(null);
     const paymentIdempotencyKeyRef = useRef(newIdempotencyKey());
 
     useEffect(() => {
@@ -294,7 +306,6 @@ export default function Catering() {
         if (contractPdfBusyId !== null) return;
 
         setContractPdfBusyId(event.id);
-        setContractPdfError(null);
         try {
             const response = await cateringAPI.downloadContract(event.id);
             const contentType = String(response.headers['content-type'] || '').toLowerCase();
@@ -314,7 +325,6 @@ export default function Catering() {
         } catch (error) {
             console.error('Error generating contract PDF:', error);
             const message = await contractDownloadError(error);
-            setContractPdfError(message);
             showError(message);
         } finally {
             setContractPdfBusyId(null);
@@ -326,8 +336,10 @@ export default function Catering() {
             setLoading(true);
             const response = await cateringAPI.getAllEvents();
             setEvents(response.data.data);
+            setEventsError(null);
         } catch (error) {
             console.error('Error loading catering events:', error);
+            setEventsError('No se pudieron cargar los eventos de catering.');
             showError(getApiErrorMessage(error, 'No se pudieron cargar los eventos de catering'));
         } finally {
             setLoading(false);
@@ -584,6 +596,7 @@ export default function Catering() {
             return;
         }
         if (!(await confirm('¿Revertir este pago? El registro original se conservará.', { variant: 'warning', confirmText: 'Sí, revertir' }))) return;
+        setReversingPaymentId(payment.id);
         try {
             await cateringAPI.reversePayment(selectedEvent.id, payment.id, reversalReason.trim());
             const response = await cateringAPI.getEventById(selectedEvent.id);
@@ -595,6 +608,8 @@ export default function Catering() {
                 ? (error as { response?: { data?: { message?: string } } }).response?.data?.message
                 : undefined;
             showError(message || 'No se pudo revertir el pago');
+        } finally {
+            setReversingPaymentId(null);
         }
     };
 
@@ -691,114 +706,149 @@ export default function Catering() {
         }
     };
 
+    const formatEventDateTime = (value: string) => new Date(value).toLocaleString('es-NI', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+    });
+
     const tableColumns: Column<CateringEvent>[] = [
         {
             key: 'event',
             header: 'Evento',
+            type: 'text',
             render: (event) => (
-                <div className="catalog-cell-stack">
-                    <span className="cell-title">{event.title}</span>
-                    <span className="cell-sub">
+                <div className="catering-cell-stack">
+                    <span className="catering-cell-title">{event.title}</span>
+                    <span className="catering-cell-sub">
                         {event.customer?.name || 'Sin cliente'}
                         {event.customer?.phone ? ` · ${event.customer.phone}` : ''}
                     </span>
                 </div>
             ),
         },
-        {
-            key: 'date',
-            header: 'Fecha y hora',
-            render: (event) => new Date(event.date).toLocaleString('es-NI', {
-                day: '2-digit',
-                month: 'short',
-                year: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit',
-            }),
-        },
-        {
-            key: 'people',
-            header: 'Personas',
-            render: (event) => event.peopleCount,
-        },
-        {
-            key: 'location',
-            header: 'Ubicación',
-            render: (event) => event.location || 'Sin ubicación',
-        },
-        {
-            key: 'total',
-            header: 'Total',
-            type: 'number',
-            render: (event) => formatMoney(Number(event.totalAmount || 0)),
-        },
+        { key: 'date', header: 'Fecha y hora', type: 'date', render: (event) => formatEventDateTime(event.date) },
+        { key: 'people', header: 'Personas', type: 'number', decimals: 0, accessor: (event) => event.peopleCount },
+        { key: 'location', header: 'Ubicación', type: 'text', render: (event) => event.location || 'Sin ubicación' },
+        { key: 'total', header: 'Total', type: 'money', render: (event) => formatMoney(Number(event.totalAmount || 0)) },
         {
             key: 'status',
             header: 'Estado',
-            render: (event) => (
-                <span className={`catalog-pill ${
-                    event.status === 'PAID' || event.status === 'FINISHED'
-                        ? 'ok'
-                        : event.status === 'CANCELLED'
-                            ? 'danger'
-                            : event.status === 'RESERVED'
-                                ? 'warning'
-                                : 'neutral'
-                }`}>
-                    {getStatusText(event.status)}
-                </span>
-            ),
+            type: 'status',
+            render: (event) => <Badge tone={STATUS_TONE[event.status] ?? 'neutral'} dot>{getStatusText(event.status)}</Badge>,
         },
         {
             key: 'actions',
             header: 'Acciones',
-            type: 'number',
+            type: 'actions',
             render: (event) => (
-                <div className="catalog-table-actions">
-                    <button
-                        type="button"
-                        className="catalog-action-btn"
-                        onClick={() => void handleOpenSidebar(event, 'info')}
-                        title="Ver evento"
-                        aria-label={`Ver evento ${event.title}`}
-                    >
-                        <Eye size={16} />
-                    </button>
-                    <button
-                        type="button"
-                        className="catalog-action-btn"
-                        onClick={() => void handleOpenSidebar(event, 'financial')}
-                        title="Ver pagos"
-                        aria-label={`Ver pagos de ${event.title}`}
-                    >
-                        <DollarSign size={16} />
-                    </button>
-                    <button
-                        type="button"
-                        className="catalog-action-btn"
+                <>
+                    <IconButton size="sm" icon={Eye} tooltip="Ver detalle" label={`Ver evento ${event.title}`} onClick={() => void handleOpenSidebar(event, 'info')} />
+                    <IconButton size="sm" icon={DollarSign} tooltip="Pagos" label={`Ver pagos de ${event.title}`} onClick={() => void handleOpenSidebar(event, 'financial')} />
+                    <IconButton
+                        size="sm"
+                        icon={Download}
+                        tooltip={contractPdfBusyId === event.id ? 'Generando contrato' : 'Descargar contrato'}
                         onClick={() => void handleDownloadContract(event)}
                         disabled={contractPdfBusyId !== null}
                         aria-busy={contractPdfBusyId === event.id}
-                        title={contractPdfBusyId === event.id ? 'Generando contrato PDF' : 'Descargar contrato PDF'}
-                        aria-label={contractPdfBusyId === event.id
+                        label={contractPdfBusyId === event.id
                             ? `Generando contrato de ${event.title}`
                             : `Descargar contrato de ${event.title}`}
-                    >
-                        <Download size={16} />
-                    </button>
+                    />
                     {canManageCatering && (
-                        <button
-                            type="button"
-                            className="catalog-action-btn danger"
-                            onClick={() => void handleDeleteEvent(event)}
-                            title="Eliminar evento"
-                            aria-label={`Eliminar evento ${event.title}`}
-                        >
-                            <Trash2 size={16} />
-                        </button>
+                        <IconButton size="sm" icon={Trash2} tone="danger" tooltip="Eliminar" label={`Eliminar evento ${event.title}`} onClick={() => void handleDeleteEvent(event)} />
                     )}
-                </div>
+                </>
             ),
+        },
+    ];
+
+    const setServiceQuantity = (index: number, quantity: number) => setFormData((current) => ({
+        ...current,
+        services: current.services.map((entry, i) => (i === index ? { ...entry, quantity } : entry)),
+    }));
+    const removeService = (index: number) => setFormData((current) => ({
+        ...current,
+        services: current.services.filter((_, i) => i !== index),
+    }));
+    const setMenuQuantity = (index: number, quantity: number) => setFormData((current) => ({
+        ...current,
+        menuItems: current.menuItems.map((entry, i) => (i === index ? { ...entry, quantity } : entry)),
+    }));
+    const removeMenuItem = (index: number) => setFormData((current) => ({
+        ...current,
+        menuItems: current.menuItems.filter((_, i) => i !== index),
+    }));
+
+    const itemColumns = <T extends CateringServiceEntry | CateringMenuEntry>(
+        nameHeader: string,
+        nameOf: (item: T) => string,
+        onQuantity: (index: number, quantity: number) => void,
+        onRemove: (index: number) => void,
+        removeLabel: string,
+    ): Column<ItemRow<T>>[] => [
+        { key: 'name', header: nameHeader, type: 'text', render: ({ item }) => <span className="catering-cell-title">{nameOf(item)}</span> },
+        { key: 'price', header: 'Precio', type: 'money', render: ({ item }) => formatMoney(Number(item.unitPrice)) },
+        {
+            key: 'quantity',
+            header: 'Cant.',
+            type: 'number',
+            width: '120px',
+            render: ({ item, index }) => (
+                <NumberInput
+                    aria-label={`Cantidad de ${nameOf(item)}`}
+                    decimals={0}
+                    min={1}
+                    value={item.quantity}
+                    onChange={(v) => onQuantity(index, Math.max(1, Math.trunc(v ?? 1)))}
+                />
+            ),
+        },
+        { key: 'subtotal', header: 'Subtotal', type: 'money', render: ({ item }) => formatMoney(Number(item.quantity * item.unitPrice)) },
+        {
+            key: 'actions',
+            header: 'Acciones',
+            type: 'actions',
+            width: '72px',
+            render: ({ item, index }) => (
+                <IconButton size="sm" icon={Trash2} tone="danger" tooltip={removeLabel} label={`${removeLabel}: ${nameOf(item)}`} onClick={() => onRemove(index)} />
+            ),
+        },
+    ];
+    const serviceColumns = itemColumns<CateringServiceEntry>('Servicio', (item) => item.service?.name || 'Servicio', setServiceQuantity, removeService, 'Quitar servicio');
+    const menuColumns = itemColumns<CateringMenuEntry>('Plato', (item) => item.menuItem?.name || 'Plato', setMenuQuantity, removeMenuItem, 'Quitar plato');
+
+    const paymentColumns: Column<CateringPaymentEntry>[] = [
+        { key: 'date', header: 'Fecha', type: 'date', render: (p) => (p.date ? new Date(p.date).toLocaleDateString('es-NI') : '-') },
+        { key: 'method', header: 'Método', type: 'text', render: (p) => p.paymentMethod?.name ?? '' },
+        { key: 'amount', header: 'Monto', type: 'money', render: (p) => formatMoney(Number(p.amount)) },
+        {
+            key: 'status',
+            header: 'Estado',
+            type: 'text',
+            render: (p) => (p.status === 'REVERSED'
+                ? <Badge tone="neutral">{`Revertido${p.reversalReason ? `: ${p.reversalReason}` : ''}`}</Badge>
+                : <Badge tone="success">Activo</Badge>),
+        },
+        {
+            key: 'actions',
+            header: 'Acciones',
+            type: 'actions',
+            width: '72px',
+            render: (p) => (canManageCatering && p.status !== 'REVERSED' ? (
+                <IconButton
+                    size="sm"
+                    icon={Undo2}
+                    tone="danger"
+                    tooltip="Revertir"
+                    label={`Revertir pago ${p.id ?? ''}`.trim()}
+                    disabled={reversingPaymentId !== null}
+                    onClick={() => void handleReversePayment(p)}
+                />
+            ) : null),
         },
     ];
 
@@ -880,261 +930,137 @@ export default function Catering() {
     const configuredTaxRate = Number(settings.tax_rate ?? settings.taxRate ?? 15);
     const taxRate = Number.isFinite(configuredTaxRate) && configuredTaxRate >= 0 ? configuredTaxRate : 15;
 
-    return (
-        <div className="catering-page">
-            {/* Header */}
-            <PageHeader
-                title="Servicios de Catering"
-                actions={
-                    <div className="ui-page-actions">
-                    <div className="view-toggle">
-                        <button
-                            type="button"
-                            className={`view-toggle-btn ${viewMode === 'grid' ? 'active' : ''}`}
-                            onClick={() => setViewMode('grid')}
-                            title="Vista de Tarjetas"
-                            aria-label="Vista de tarjetas"
-                            aria-pressed={viewMode === 'grid'}
-                        >
-                            <Grid3x3 size={18} />
-                        </button>
-                        <button
-                            type="button"
-                            className={`view-toggle-btn ${viewMode === 'table' ? 'active' : ''}`}
-                            onClick={() => setViewMode('table')}
-                            title="Vista de Tabla"
-                            aria-label="Vista de tabla"
-                            aria-pressed={viewMode === 'table'}
-                        >
-                            <List size={18} />
-                        </button>
-                        <button
-                            type="button"
-                            className={`view-toggle-btn ${viewMode === 'calendar' ? 'active' : ''}`}
-                            onClick={() => setViewMode('calendar')}
-                            title="Vista de Calendario"
-                            aria-label="Vista de calendario"
-                            aria-pressed={viewMode === 'calendar'}
-                        >
-                            <CalendarDays size={18} />
-                        </button>
-                    </div>
-                    {canManageCatering && (
-                        <Button variant="primary" onClick={() => handleOpenSidebar()}>
-                            <Plus size={20} />
-                            Nuevo Evento
-                        </Button>
-                    )}
-                </div>
-                }
-            />
+    const paidTotal = selectedEvent?.payments?.filter((p) => p.status !== 'REVERSED').reduce((sum, p) => sum + Number(p.amount), 0) || 0;
+    const activeNonCashPayments = (selectedEvent?.payments || []).filter((payment) =>
+        payment.status !== 'REVERSED' && payment.methodType && payment.methodType !== 'CASH'
+    );
 
-            {/* Filters apply to card and table views. */}
-            {viewMode !== 'calendar' && (
-                <div className="catering-filters">
-                    {/* Status Filters */}
-                    <div className="filter-buttons">
-                        <button
-                            className={`filter-btn ${filterStatus === 'all' ? 'active' : ''}`}
-                            onClick={() => setFilterStatus('all')}
-                        >
-                            Todos
-                        </button>
-                        <button
-                            className={`filter-btn quoted ${filterStatus === 'QUOTED' ? 'active' : ''}`}
-                            onClick={() => setFilterStatus('QUOTED')}
-                        >
-                            Cotizados
-                        </button>
-                        <button
-                            className={`filter-btn reserved ${filterStatus === 'RESERVED' ? 'active' : ''}`}
-                            onClick={() => setFilterStatus('RESERVED')}
-                        >
-                            Reservados
-                        </button>
-                        <button
-                            className={`filter-btn paid ${filterStatus === 'PAID' ? 'active' : ''}`}
-                            onClick={() => setFilterStatus('PAID')}
-                        >
-                            Pagados
-                        </button>
-                        <button
-                            className={`filter-btn finished ${filterStatus === 'FINISHED' ? 'active' : ''}`}
-                            onClick={() => setFilterStatus('FINISHED')}
-                        >
-                            Finalizados
-                        </button>
-                        <button
-                            className={`filter-btn cancelled ${filterStatus === 'CANCELLED' ? 'active' : ''}`}
-                            onClick={() => setFilterStatus('CANCELLED')}
-                        >
-                            Cancelados
-                        </button>
-                    </div>
-
-                    {/* Stats and Search */}
-                    <div className="filter-right-section">
-                        {/* Stats Counters */}
-                        <input
-                            type="text"
-                            placeholder="Buscar evento o cliente..."
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            className="search-input catering-search"
-                        />
-                    </div>
-                </div>
-            )}
-
-            {contractPdfBusyId !== null && (
-                <p className="catering-contract-status" role="status" aria-live="polite">
-                    Preparando contrato PDF…
-                </p>
-            )}
-            {contractPdfError && (
-                <p className="catering-contract-status error" role="alert">
-                    {contractPdfError}
-                </p>
-            )}
-
-            {loading ? (
-                <LoadingSpinner text="Cargando eventos..." />
-            ) : viewMode === 'calendar' ? (
-                <div className="calendar-container">
-                    <div className="calendar-header">
-                        <div className="calendar-month-year">
-                            <button className="calendar-nav-btn" onClick={handlePrevPeriod}>
-                                <ChevronLeft size={20} />
-                            </button>
-                            <h2>{getCalendarTitle()}</h2>
-                            <button className="calendar-nav-btn" onClick={handleNextPeriod}>
-                                <ChevronRight size={20} />
-                            </button>
+    const renderEventsContent = () => {
+        if (viewMode === 'calendar') {
+            if (loading) return <Skeleton height={320} />;
+            if (eventsError) return <LoadErrorState message={eventsError} onRetry={() => void loadEvents()} />;
+            return (
+                <section className="catering-calendar" aria-label="Calendario de eventos">
+                    <div className="catering-calendar__bar">
+                        <div className="catering-calendar__nav">
+                            <IconButton icon={ChevronLeft} label="Periodo anterior" onClick={handlePrevPeriod} />
+                            <h2 className="catering-calendar__title">{getCalendarTitle()}</h2>
+                            <IconButton icon={ChevronRight} label="Periodo siguiente" onClick={handleNextPeriod} />
                         </div>
-                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                            <div className="view-toggle" style={{ marginRight: '8px' }}>
-                                <button
-                                    className={`view-toggle-btn ${calendarViewMode === 'day' ? 'active' : ''}`}
-                                    onClick={() => setCalendarViewMode('day')}
-                                    title="Vista de día"
-                                >
-                                    Día
-                                </button>
-                                <button
-                                    className={`view-toggle-btn ${calendarViewMode === 'week' ? 'active' : ''}`}
-                                    onClick={() => setCalendarViewMode('week')}
-                                    title="Vista de semana"
-                                >
-                                    Semana
-                                </button>
-                                <button
-                                    className={`view-toggle-btn ${calendarViewMode === 'month' ? 'active' : ''}`}
-                                    onClick={() => setCalendarViewMode('month')}
-                                    title="Vista de mes"
-                                >
-                                    Mes
-                                </button>
-                            </div>
-                            <button className="today-btn" onClick={handleToday}>
-                                Hoy
-                            </button>
+                        <div className="catering-calendar__tools">
+                            <SegmentedControl<'day' | 'week' | 'month'>
+                                ariaLabel="Escala del calendario"
+                                options={[
+                                    { value: 'day', label: 'Día' },
+                                    { value: 'week', label: 'Semana' },
+                                    { value: 'month', label: 'Mes' },
+                                ]}
+                                value={calendarViewMode}
+                                onChange={setCalendarViewMode}
+                            />
+                            <Button onClick={handleToday}>Hoy</Button>
                         </div>
                     </div>
 
                     {calendarViewMode === 'month' && (
-                        <div className="calendar-grid">
-                            {['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'].map(d => (
-                                <div key={d} className="calendar-day-header">{d}</div>
-                            ))}
-                            {(() => {
-                                const { daysInMonth, startingDayOfWeek, year, month } = getDaysInMonth(currentMonth);
-                                const cells = [];
-                                for (let i = 0; i < startingDayOfWeek; i++) {
-                                    cells.push(<div key={`empty-${i}`} className="calendar-day empty"></div>);
-                                }
-                                for (let day = 1; day <= daysInMonth; day++) {
-                                    const date = new Date(year, month, day);
-                                    const dayEvents = getEventsForDate(date);
-                                    const isToday = new Date().toDateString() === date.toDateString();
-                                    cells.push(
-                                        <div key={day} className={`calendar-day ${isToday ? 'today' : ''} ${dayEvents.length > 0 ? 'has-events' : ''}`}>
-                                            <div className="calendar-day-number">{day}</div>
-                                            {dayEvents.length > 0 && (
-                                                <div className="calendar-events">
-                                                    {dayEvents.slice(0, 3).map(e => (
-                                                        <div
-                                                            key={e.id}
-                                                            className={`calendar-event-item status-${e.status.toLowerCase()}`}
-                                                            onClick={() => handleOpenSidebar(e)}
-                                                            title={`${e.title} - ${e.customer?.name}`}
-                                                        >
-                                                            <span className="res-time">{new Date(e.date).getHours()}:{new Date(e.date).getMinutes().toString().padStart(2, '0')}</span>
-                                                            <span className="res-name">{e.title}</span>
-                                                        </div>
-                                                    ))}
-                                                    {dayEvents.length > 3 && (
-                                                        <div className="calendar-more">+{dayEvents.length - 3} más</div>
-                                                    )}
-                                                </div>
-                                            )}
-                                        </div>
-                                    );
-                                }
-                                return cells;
-                            })()}
+                        <div className="catering-calendar__scroll">
+                            <div className="catering-month">
+                                {['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'].map((d) => (
+                                    <div key={d} className="catering-month__dow">{d}</div>
+                                ))}
+                                {(() => {
+                                    const { daysInMonth, startingDayOfWeek, year, month } = getDaysInMonth(currentMonth);
+                                    const cells = [];
+                                    for (let i = 0; i < startingDayOfWeek; i++) {
+                                        cells.push(<div key={`empty-${i}`} className="catering-month__day is-empty" />);
+                                    }
+                                    for (let day = 1; day <= daysInMonth; day++) {
+                                        const date = new Date(year, month, day);
+                                        const dayEvents = getEventsForDate(date);
+                                        const isToday = new Date().toDateString() === date.toDateString();
+                                        cells.push(
+                                            <div key={day} className={`catering-month__day ${isToday ? 'is-today' : ''}`}>
+                                                <span className="catering-month__number">{day}</span>
+                                                {dayEvents.slice(0, 3).map((e) => (
+                                                    <button
+                                                        type="button"
+                                                        key={e.id}
+                                                        className={`catering-chip catering-chip--${e.status.toLowerCase()}`}
+                                                        onClick={() => void handleOpenSidebar(e)}
+                                                        title={`${e.title} - ${e.customer?.name ?? ''}`}
+                                                    >
+                                                        <span className="catering-chip__time">{new Date(e.date).getHours()}:{new Date(e.date).getMinutes().toString().padStart(2, '0')}</span>
+                                                        <span className="catering-chip__name">{e.title}</span>
+                                                    </button>
+                                                ))}
+                                                {dayEvents.length > 3 && <span className="catering-month__more">+{dayEvents.length - 3} más</span>}
+                                            </div>
+                                        );
+                                    }
+                                    return cells;
+                                })()}
+                            </div>
                         </div>
                     )}
 
                     {calendarViewMode === 'week' && (
-                        <div className="week-view">
-                            {(() => {
-                                const days = [];
-                                const startOfWeek = new Date(currentWeek);
-                                startOfWeek.setDate(currentWeek.getDate() - currentWeek.getDay());
-
-                                for (let i = 0; i < 7; i++) {
-                                    const date = new Date(startOfWeek);
-                                    date.setDate(startOfWeek.getDate() + i);
-                                    const dayEvents = getEventsForDate(date);
-                                    const isToday = new Date().toDateString() === date.toDateString();
-
-                                    days.push(
-                                        <div key={i} className={`week-day ${isToday ? 'today' : ''}`}>
-                                            <div className="week-day-header">
-                                                <div className="week-day-name">{date.toLocaleDateString('es-ES', { weekday: 'short' })}</div>
-                                                <div className="week-day-number">{date.getDate()}</div>
-                                            </div>
-                                            <div className="week-day-events">
-                                                {dayEvents.map(e => (
-                                                    <div key={e.id} className={`week-event-item status-${e.status.toLowerCase()}`} role="button" tabIndex={0} aria-label={`Ver evento ${e.title}`} onClick={() => handleOpenSidebar(e)} onKeyDown={(event) => activateOnKeyboard(event, () => handleOpenSidebar(e))}>
-                                                        <div className="year-event-time">{new Date(e.date).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}</div>
-                                                        <div className="week-event-name">{e.title}</div>
-                                                    </div>
+                        <div className="catering-calendar__scroll">
+                            <div className="catering-week">
+                                {(() => {
+                                    const days = [];
+                                    const startOfWeek = new Date(currentWeek);
+                                    startOfWeek.setDate(currentWeek.getDate() - currentWeek.getDay());
+                                    for (let i = 0; i < 7; i++) {
+                                        const date = new Date(startOfWeek);
+                                        date.setDate(startOfWeek.getDate() + i);
+                                        const dayEvents = getEventsForDate(date);
+                                        const isToday = new Date().toDateString() === date.toDateString();
+                                        days.push(
+                                            <div key={i} className={`catering-week__day ${isToday ? 'is-today' : ''}`}>
+                                                <div className="catering-week__head">
+                                                    <span className="catering-week__name">{date.toLocaleDateString('es-ES', { weekday: 'short' })}</span>
+                                                    <span className="catering-week__number">{date.getDate()}</span>
+                                                </div>
+                                                {dayEvents.map((e) => (
+                                                    <button
+                                                        type="button"
+                                                        key={e.id}
+                                                        className={`catering-chip catering-chip--${e.status.toLowerCase()}`}
+                                                        aria-label={`Ver evento ${e.title}`}
+                                                        onClick={() => void handleOpenSidebar(e)}
+                                                    >
+                                                        <span className="catering-chip__time">{new Date(e.date).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}</span>
+                                                        <span className="catering-chip__name">{e.title}</span>
+                                                    </button>
                                                 ))}
                                             </div>
-                                        </div>
-                                    );
-                                }
-                                return days;
-                            })()}
+                                        );
+                                    }
+                                    return days;
+                                })()}
+                            </div>
                         </div>
                     )}
 
                     {calendarViewMode === 'day' && (
-                        <div className="day-view">
-                            {[8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22].map(hour => {
-                                const dayEvents = getEventsForDate(currentDay).filter(e => new Date(e.date).getHours() === hour);
+                        <div className="catering-day">
+                            {[8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22].map((hour) => {
+                                const dayEvents = getEventsForDate(currentDay).filter((e) => new Date(e.date).getHours() === hour);
                                 return (
-                                    <div key={hour} className="day-hour-slot">
-                                        <div className="day-hour-label">{hour}:00</div>
-                                        <div className="day-hour-content">
-                                            {dayEvents.map(e => (
-                                                <div key={e.id} className={`day-event-item status-${e.status.toLowerCase()}`} role="button" tabIndex={0} aria-label={`Ver evento ${e.title}`} onClick={() => handleOpenSidebar(e)} onKeyDown={(event) => activateOnKeyboard(event, () => handleOpenSidebar(e))}>
-                                                    <div className="day-event-info">
-                                                        <span className="day-event-time">{new Date(e.date).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}</span>
-                                                        <span className="day-event-name">{e.title}</span>
-                                                    </div>
-                                                </div>
+                                    <div key={hour} className="catering-day__slot">
+                                        <span className="catering-day__hour">{hour}:00</span>
+                                        <div className="catering-day__events">
+                                            {dayEvents.map((e) => (
+                                                <button
+                                                    type="button"
+                                                    key={e.id}
+                                                    className={`catering-chip catering-chip--${e.status.toLowerCase()}`}
+                                                    aria-label={`Ver evento ${e.title}`}
+                                                    onClick={() => void handleOpenSidebar(e)}
+                                                >
+                                                    <span className="catering-chip__time">{new Date(e.date).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}</span>
+                                                    <span className="catering-chip__name">{e.title}</span>
+                                                </button>
                                             ))}
                                         </div>
                                     </div>
@@ -1142,109 +1068,147 @@ export default function Catering() {
                             })}
                         </div>
                     )}
-                </div>
-            ) : filteredEvents.length === 0 ? (
-                <div className="empty-state">
-                    <FileText size={64} opacity={0.2} />
-                    <p>No se encontraron eventos</p>
-                </div>
-            ) : viewMode === 'table' ? (
-                <div className="catering-events-table">
-                    <DataTable<CateringEvent>
-                        ariaLabel="Eventos de catering"
-                        rows={filteredEvents}
-                        rowKey={(event) => event.id}
-                        columns={tableColumns}
-                        resetKey={`${filterStatus}-${searchQuery}-${filteredEvents.length}`}
-                    />
-                </div>
-            ) : (
-                <div className="catering-grid">
-                    {filteredEvents.map(event => (
-                        <div key={event.id} className={`table-card-new status-${event.status.toLowerCase()}`} role="button" tabIndex={0} aria-label={`Ver evento ${event.title}`} onClick={() => handleOpenSidebar(event)} onKeyDown={(keyboardEvent) => activateOnKeyboard(keyboardEvent, () => handleOpenSidebar(event))}>
-                            {/* Status Badge */}
-                            <div className={`status-badge-new status-${event.status.toLowerCase()}`}>
-                                <span>{getStatusText(event.status)}</span>
-                            </div>
+                </section>
+            );
+        }
 
-                            {/* Card Body */}
-                            <div className="table-card-body-new">
-                                <div className="table-number-new">{event.title}</div>
+        if (viewMode === 'table') {
+            return (
+                <DataTable<CateringEvent>
+                    ariaLabel="Eventos de catering"
+                    rows={filteredEvents}
+                    rowKey={(event) => event.id}
+                    columns={tableColumns}
+                    loading={loading}
+                    error={eventsError}
+                    onRetry={() => void loadEvents()}
+                    resetKey={`${filterStatus}-${searchQuery}`}
+                    onRowClick={(event) => void handleOpenSidebar(event)}
+                    empty={events.length === 0
+                        ? <EmptyState icon={FileText} title="Aún no hay eventos de catering" description="Registra la primera cotización para empezar." />
+                        : <EmptyState icon={FileText} title="No hay eventos con estos filtros" />}
+                />
+            );
+        }
 
-                                <div className="table-details-new">
-                                    <div className="detail-item">
-                                        <Users size={16} />
-                                        <span>{event.customer?.name || 'Sin Cliente'}</span>
-                                    </div>
-                                    {event.customer?.phone && (
-                                        <div className="detail-item">
-                                            <Phone size={16} />
-                                            <span>{event.customer.phone}</span>
-                                        </div>
-                                    )}
-                                    <div className="detail-item" style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid var(--ui-border)', opacity: 0.8 }}>
-                                        <Calendar size={14} />
-                                        <span>{new Date(event.date).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })} • {new Date(event.date).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}</span>
-                                    </div>
-                                    <div className="detail-item" style={{ opacity: 0.8 }}>
-                                        <Users size={14} />
-                                        <span>{event.peopleCount} personas</span>
-                                    </div>
-                                    {event.location && (
-                                        <div className="detail-item" style={{ opacity: 0.8 }}>
-                                            <MapPin size={14} />
-                                            <span>{event.location}</span>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-
-                            {/* Actions Footer */}
-                            <div className="table-card-actions-new" onClick={(e) => e.stopPropagation()}>
-                                <button
-                                    className="action-btn-new view"
-                                    onClick={() => handleOpenSidebar(event, 'info')}
-                                >
-                                    <Eye size={20} />
-                                    <span>Ver</span>
-                                </button>
-
-                                <button
-                                    className="action-btn-new"
-                                    onClick={() => handleOpenSidebar(event, 'financial')}
-                                >
-                                    <DollarSign size={20} />
-                                    <span>Pagos</span>
-                                </button>
-
-                                <button
-                                    type="button"
-                                    className="action-btn-new"
-                                    onClick={() => void handleDownloadContract(event)}
-                                    disabled={contractPdfBusyId !== null}
-                                    aria-busy={contractPdfBusyId === event.id}
-                                    aria-label={contractPdfBusyId === event.id
-                                        ? `Generando contrato de ${event.title}`
-                                        : `Descargar contrato de ${event.title}`}
-                                >
-                                    <Download size={20} />
-                                    <span>{contractPdfBusyId === event.id ? 'Generando…' : 'PDF'}</span>
-                                </button>
-
-                                {canManageCatering && (
-                                    <button
-                                        className="action-btn-new delete"
-                                        onClick={() => void handleDeleteEvent(event)}
-                                        title="Eliminar"
-                                    >
-                                        <Trash2 size={20} />
-                                    </button>
-                                )}
-                            </div>
+        if (loading) return <Skeleton height={240} />;
+        if (eventsError) return <LoadErrorState message={eventsError} onRetry={() => void loadEvents()} />;
+        if (filteredEvents.length === 0) {
+            return (
+                <EmptyState
+                    icon={FileText}
+                    title={events.length === 0 ? 'Aún no hay eventos de catering' : 'No hay eventos con estos filtros'}
+                    description={events.length === 0 ? 'Registra la primera cotización para empezar.' : undefined}
+                />
+            );
+        }
+        return (
+            <div className="catering-grid">
+                {filteredEvents.map((event) => (
+                    <article key={event.id} className="catering-card">
+                        <button
+                            type="button"
+                            className="catering-card__main"
+                            aria-label={`Ver evento ${event.title}`}
+                            onClick={() => void handleOpenSidebar(event)}
+                        >
+                            <span className="catering-card__head">
+                                <span className="catering-card__title">{event.title}</span>
+                                <Badge tone={STATUS_TONE[event.status] ?? 'neutral'} dot>{getStatusText(event.status)}</Badge>
+                            </span>
+                            <span className="catering-card__row"><Users size={16} aria-hidden="true" />{event.customer?.name || 'Sin cliente'}</span>
+                            {event.customer?.phone && <span className="catering-card__row"><Phone size={16} aria-hidden="true" />{event.customer.phone}</span>}
+                            <span className="catering-card__row is-muted"><Calendar size={16} aria-hidden="true" />{formatEventDateTime(event.date)}</span>
+                            <span className="catering-card__row is-muted"><Users size={16} aria-hidden="true" />{event.peopleCount} personas</span>
+                            {event.location && <span className="catering-card__row is-muted"><MapPin size={16} aria-hidden="true" />{event.location}</span>}
+                        </button>
+                        <div className="catering-card__actions">
+                            <IconButton icon={Eye} tooltip="Ver detalle" label={`Ver detalle de ${event.title}`} onClick={() => void handleOpenSidebar(event, 'info')} />
+                            <IconButton icon={DollarSign} tooltip="Pagos" label={`Ver pagos de ${event.title}`} onClick={() => void handleOpenSidebar(event, 'financial')} />
+                            <IconButton
+                                icon={Download}
+                                tooltip={contractPdfBusyId === event.id ? 'Generando contrato' : 'Descargar contrato'}
+                                onClick={() => void handleDownloadContract(event)}
+                                disabled={contractPdfBusyId !== null}
+                                aria-busy={contractPdfBusyId === event.id}
+                                label={contractPdfBusyId === event.id
+                                    ? `Generando contrato de ${event.title}`
+                                    : `Descargar contrato de ${event.title}`}
+                            />
+                            {canManageCatering && (
+                                <IconButton icon={Trash2} tone="danger" tooltip="Eliminar" label={`Eliminar evento ${event.title}`} onClick={() => void handleDeleteEvent(event)} />
+                            )}
                         </div>
-                    ))}
-                </div>
+                    </article>
+                ))}
+            </div>
+        );
+    };
+
+    return (
+        <PageContent>
+            <PageHeader
+                title="Servicios de Catering"
+                description="Cotizaciones, reservas, pagos y contratos de eventos"
+                actions={(
+                    <>
+                        <SegmentedControl<CateringViewMode>
+                            ariaLabel="Vista"
+                            iconOnly
+                            options={[
+                                { value: 'grid', label: 'Tarjetas', icon: LayoutGrid },
+                                { value: 'table', label: 'Tabla', icon: Table2 },
+                                { value: 'calendar', label: 'Calendario', icon: CalendarDays },
+                            ]}
+                            value={viewMode}
+                            onChange={setViewMode}
+                        />
+                        {canManageCatering && (
+                            <Button variant="primary" icon={Plus} onClick={() => void handleOpenSidebar()}>
+                                Nuevo evento
+                            </Button>
+                        )}
+                    </>
+                )}
+            />
+
+            {viewMode !== 'calendar' && (
+                <Tabs
+                    ariaLabel="Filtrar eventos por estado"
+                    active={filterStatus}
+                    onChange={(id) => setFilterStatus(id as typeof filterStatus)}
+                    tabs={([
+                        ['all', 'Todos'],
+                        ['QUOTED', 'Cotizados'],
+                        ['RESERVED', 'Reservados'],
+                        ['PAID', 'Pagados'],
+                        ['FINISHED', 'Finalizados'],
+                        ['CANCELLED', 'Cancelados'],
+                    ] as const).map(([id, label]) => ({
+                        id,
+                        label,
+                        badge: id === 'all' ? events.length : events.filter((event) => event.status === id).length,
+                    }))}
+                />
             )}
+
+            {viewMode !== 'calendar' && (
+                <TableToolbar>
+                    <Input
+                        type="search"
+                        aria-label="Buscar evento o cliente"
+                        placeholder="Buscar evento o cliente..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                    />
+                </TableToolbar>
+            )}
+
+            {contractPdfBusyId !== null && (
+                <p className="catering-status" role="status" aria-live="polite">Preparando contrato PDF…</p>
+            )}
+
+            {renderEventsContent()}
 
             <FullScreenModal
                 isOpen={isSidebarOpen}
@@ -1262,11 +1226,18 @@ export default function Catering() {
                 activeTab={activeTab}
                 onTabChange={(id) => setActiveTab(id as typeof activeTab)}
                 footerStart={(
-                    <span className="catering-total-label">
-                        Total estimado: <strong className="catering-total-value">{formatMoney(calculateTabTotals())}</strong>
-                    </span>
+                    <>
+                        <span className="catering-total-label">
+                            Total estimado: <strong className="catering-total-value">{formatMoney(calculateTabTotals())}</strong>
+                        </span>
+                        {activeTab === 'menu' && (
+                            <Button icon={AlertCircle} onClick={() => void checkAvailability()}>Verificar inventario</Button>
+                        )}
+                    </>
                 )}
-                footer={({ requestClose }) => (
+                footer={({ requestClose }) => (activeTab === 'financial' && selectedEvent ? (
+                    <Button onClick={requestClose}>Cerrar</Button>
+                ) : (
                     <>
                         <Button onClick={requestClose}>Cancelar</Button>
                         {canManageCatering && (
@@ -1275,669 +1246,498 @@ export default function Catering() {
                             </Button>
                         )}
                     </>
-                )}
+                ))}
             >
-                    <form
-                        id="catering-event-form"
-                        className="catering-modal-content catering-event-form"
-                        onSubmit={(event) => {
-                            event.preventDefault();
-                            void handleSave();
-                        }}
-                    >
-                    <div className="catering-tab-content">
-                        {activeTab === 'info' && (
-                            <div className="catering-tab-panel catering-info-layout">
-                                <section className="modal-content-group catering-event-section catering-customer-section">
-                                    <div className="modal-section-header">
-                                        <Users size={18} />
-                                        <h3>Información del cliente</h3>
-                                    </div>
-                                    <div className="modal-form-row">
-                                        <div className="modal-input-group">
-                                            <label htmlFor="catering-customer-name">Nombre del cliente</label>
-                                            <input
-                                                id="catering-customer-name"
-                                                className="modal-standard-input"
-                                                placeholder="Ej: Juan Pérez"
-                                                value={formData.customerName}
-                                                onChange={e => setFormData({ ...formData, customerName: e.target.value })}
-                                            />
-                                        </div>
-                                        <div className="modal-input-group">
-                                            <label htmlFor="catering-customer-tax-id">Cédula / RUC</label>
-                                            <input
-                                                id="catering-customer-tax-id"
-                                                className="modal-standard-input"
-                                                placeholder="Ej: 001-000000-0000X"
-                                                value={formData.customerTaxId}
-                                                onChange={e => setFormData({ ...formData, customerTaxId: e.target.value })}
-                                            />
-                                        </div>
-                                        <div className="modal-input-group">
-                                            <label htmlFor="catering-customer-phone">Teléfono</label>
-                                            <input
-                                                id="catering-customer-phone"
-                                                type="tel"
-                                                className="modal-standard-input"
-                                                placeholder="Ej: +505 8888-8888"
-                                                value={formData.customerPhone}
-                                                onChange={e => setFormData({ ...formData, customerPhone: e.target.value })}
-                                            />
-                                        </div>
-                                    </div>
-                                </section>
-
-                                <section className="modal-content-group catering-event-section catering-event-section-main">
-                                    <div className="modal-section-header">
-                                        <Calendar size={18} />
-                                        <h3>Detalles del evento</h3>
-                                    </div>
-                                    <div className="modal-form-row">
-                                        <Field label="Sucursal" htmlFor="catering-select-1">
-                                            <AppSelect
-                                                inputId="catering-select-1"
-                                                value={formData.branchId || null}
-                                                onChange={(option) =>
-                                                    setFormData({ ...formData, branchId: option || '' })}
-                                                options={allBranches.map((b) => ({ value: b.id.toString(), label: b.name }))}
-                                                placeholder="Seleccione Sucursal..."
-                                                isClearable
-                                            />
-                                        </Field>
-                                        <div className="modal-input-group">
-                                            <label htmlFor="catering-event-title">Título del evento</label>
-                                            <input
-                                                id="catering-event-title"
-                                                className="modal-standard-input"
-                                                placeholder="Ej: Cumpleaños de María"
-                                                value={formData.title}
-                                                onChange={e => setFormData({ ...formData, title: e.target.value })}
-                                            />
-                                        </div>
-                                    </div>
-                                    <div className="modal-form-row">
-                                        <div className="modal-input-group">
-                                            <label htmlFor="catering-event-date">Fecha</label>
-                                            <input
-                                                id="catering-event-date"
-                                                type="date"
-                                                className="modal-standard-input"
-                                                value={formData.date}
-                                                onChange={e => setFormData({ ...formData, date: e.target.value })}
-                                            />
-                                        </div>
-                                        <div className="modal-input-group">
-                                            <label htmlFor="catering-event-time">Hora</label>
-                                            <input
-                                                id="catering-event-time"
-                                                type="time"
-                                                className="modal-standard-input"
-                                                value={formData.time}
-                                                onChange={e => setFormData({ ...formData, time: e.target.value })}
-                                            />
-                                        </div>
-                                    </div>
-                                    <div className="modal-form-row">
-                                        <Field label="Estado" htmlFor="catering-select-2">
-                                            <AppSelect
-                                                inputId="catering-select-2"
-                                                value={formData.status}
-                                                isClearable={false}
-                                                onChange={(option) => {
-                                                    if (!option) return;
-                                                    setFormData({ ...formData, status: option });
-                                                    if (option !== 'FINISHED') setFinishWarehouseId(null);
-                                                }}
-                                                options={getCateringStatusOptions(selectedEvent?.status).map((value) => ({
-                                                    value,
-                                                    label: getStatusText(value),
-                                                }))}
-                                                isDisabled={Boolean(selectedEvent && isCateringStatusTerminal(selectedEvent.status))}
-                                            />
-                                        </Field>
-                                        {selectedEvent?.status === 'RESERVED' && (
-                                            <small>El estado Pagado se asigna automáticamente al completar el saldo.</small>
-                                        )}
-                                        {selectedEvent?.status === 'PAID' && formData.status === 'FINISHED' && (
-                                            <Field label="Bodega para consumo" htmlFor="catering-select-3">
-                                                <AppSelect
-                                                    inputId="catering-select-3"
-                                                    options={allWarehouses
-                                                        .filter((warehouse) => warehouse.type === 'BRANCH' && warehouse.branchId === Number(formData.branchId))
-                                                        .map((warehouse) => ({ value: warehouse.id, label: `${warehouse.name} (${warehouse.code})` }))}
-                                                    value={finishWarehouseId}
-                                                    onChange={(option) => setFinishWarehouseId(option ?? null)}
-                                                    placeholder="Seleccionar bodega de la sucursal..."
-                                                    noOptionsText='No hay bodegas de sucursal disponibles'
-                                                />
-                                            </Field>
-                                        )}
-                                        {finishPreviewEventId != null && finishWarehouseId != null && (
-                                            <div className="catering-finish-preview" aria-live="polite">
-                                                <small>
-                                                    Cada ingrediente se descuenta de la bodega asignada por las reglas de la sucursal;
-                                                    sin regla, de la bodega seleccionada.
-                                                </small>
-                                                {finishPreviewError && <small role="alert">{finishPreviewError}</small>}
-                                                {finishPreview && finishPreview.length === 0 && (
-                                                    <small>El evento no tiene ingredientes con receta para descontar.</small>
-                                                )}
-                                                {finishPreview && finishPreview.length > 0 && (
-                                                    <DataTable<CateringInventoryPreviewLine>
-                                                        ariaLabel="Ingredientes a descontar"
-                                                        columns={FINISH_PREVIEW_COLUMNS}
-                                                        rows={finishPreview}
-                                                        rowKey={(line) => line.productId}
-                                                        rowTone={(line) => (line.shortage > 0 ? 'danger' : undefined)}
-                                                        pagination={{ mode: 'client' }}
-                                                        defaultPageSize={50}
-                                                    />
-                                                )}
-                                                {finishPreview?.some((line) => line.shortage > 0) && (
-                                                    <small>
-                                                        Hay faltantes: como en ventas, el evento se finaliza igual y se registra existencia negativa.
-                                                    </small>
-                                                )}
-                                            </div>
-                                        )}
-                                        <div className="modal-input-group">
-                                            <label htmlFor="catering-people-count">Invitados</label>
-                                            <input
-                                                id="catering-people-count"
-                                                type="number"
-                                                min="1"
-                                                className="modal-standard-input"
-                                                value={formData.peopleCount}
-                                                onChange={e => setFormData({ ...formData, peopleCount: parseInt(e.target.value) })}
-                                            />
-                                        </div>
-                                    </div>
-                                </section>
-
-                            </div>
-                        )}
-
-                        {activeTab === 'logistics' && (
-                            <div className="catering-tab-panel">
-                                <section className="modal-content-group catering-event-section catering-event-section-full">
-                                    <div className="modal-section-header">
-                                        <MapPin size={18} />
-                                        <h3>Logística y notas</h3>
-                                    </div>
-                                    <div className="modal-input-group">
-                                        <label htmlFor="catering-location">Ubicación</label>
-                                        <input
-                                            id="catering-location"
-                                            className="modal-standard-input"
-                                            placeholder="Dirección, salón o punto de referencia"
-                                            value={formData.location}
-                                            onChange={e => setFormData({ ...formData, location: e.target.value })}
+                <form
+                    id="catering-event-form"
+                    className="catering-form"
+                    onSubmit={(event) => {
+                        event.preventDefault();
+                        void handleSave();
+                    }}
+                >
+                    {activeTab === 'info' && (
+                        <>
+                            <FormSection title="Información del cliente">
+                                <FormGrid columns="repeat(auto-fit, minmax(14rem, 1fr))">
+                                    <Field label="Nombre del cliente" htmlFor="catering-customer-name" required>
+                                        <Input
+                                            id="catering-customer-name"
+                                            placeholder="Ej: Juan Pérez"
+                                            value={formData.customerName}
+                                            onChange={(e) => setFormData({ ...formData, customerName: e.target.value })}
                                         />
-                                    </div>
-                                    <div className="modal-input-group" style={{ marginTop: '12px' }}>
-                                        <label htmlFor="catering-notes">Notas operativas</label>
-                                        <textarea
-                                            id="catering-notes"
-                                            className="modal-standard-input"
-                                            rows={7}
-                                            placeholder="Montaje, acceso, contacto en sitio y observaciones para el equipo"
-                                            value={formData.notes}
-                                            onChange={e => setFormData({ ...formData, notes: e.target.value })}
+                                    </Field>
+                                    <Field label="Cédula / RUC" htmlFor="catering-customer-tax-id">
+                                        <Input
+                                            id="catering-customer-tax-id"
+                                            placeholder="Ej: 001-000000-0000X"
+                                            value={formData.customerTaxId}
+                                            onChange={(e) => setFormData({ ...formData, customerTaxId: e.target.value })}
                                         />
-                                    </div>
-                                </section>
-                            </div>
-                        )}
+                                    </Field>
+                                    <Field label="Teléfono" htmlFor="catering-customer-phone">
+                                        <Input
+                                            id="catering-customer-phone"
+                                            type="tel"
+                                            placeholder="Ej: +505 8888-8888"
+                                            value={formData.customerPhone}
+                                            onChange={(e) => setFormData({ ...formData, customerPhone: e.target.value })}
+                                        />
+                                    </Field>
+                                </FormGrid>
+                            </FormSection>
 
-                        {activeTab === 'services' && (
-                            <div className="catering-tab-panel modal-content-group">
-                                <div className="modal-section-header">
-                                    <ConciergeBell size={18} />
-                                    <h3>Servicios del evento</h3>
-                                </div>
-                                <div className="catering-tab-toolbar single-control">
-                                    <Field label="Agregar Servicio" htmlFor="catering-select-4">
+                            <FormSection title="Detalles del evento">
+                                <FormGrid>
+                                    <Field label="Sucursal" htmlFor="catering-select-1" required>
                                         <AppSelect
-                                            inputId="catering-select-4"
-                                            value={null}
-                                            onChange={(option) => {
-                                                if (option) {
-                                                    const service = allServices.find((s) => s.id.toString() === option);
-                                                    if (service) {
-                                                        setFormData({
-                                                            ...formData,
-                                                            services: [...formData.services, { service, quantity: 1, unitPrice: service.salePrice ?? 0 }]
-                                                        });
-                                                    }
-                                                }
-                                            }}
-                                            options={allServices.map((s) => ({ value: s.id.toString(), label: `${s.name} - ${formatMoney(Number(s.salePrice))}` }))}
-                                            placeholder="Seleccione un servicio..."
+                                            inputId="catering-select-1"
+                                            value={formData.branchId || null}
+                                            onChange={(option) => setFormData({ ...formData, branchId: option || '' })}
+                                            options={allBranches.map((b) => ({ value: b.id.toString(), label: b.name }))}
+                                            placeholder="Seleccione sucursal..."
                                             isClearable
                                         />
                                     </Field>
-                                </div>
-
-                                <div className="items-table">
-                                    {formData.services.length > 0 && (
-                                        <div className="items-table-header">
-                                            <span>Servicio</span>
-                                            <span>Precio</span>
-                                            <span>Cant.</span>
-                                            <span>Subtotal</span>
-                                            <span></span>
-                                        </div>
-                                    )}
-                                    {formData.services.length === 0 && (
-                                        <div className="catering-empty-items">
-                                            <ConciergeBell size={24} aria-hidden="true" />
-                                            <strong>Sin servicios agregados</strong>
-                                            <span>Selecciona un servicio para incorporarlo al evento.</span>
-                                        </div>
-                                    )}
-                                    {formData.services.map((item, index) => (
-                                        <div key={index} className="items-table-row">
-                                            <span>{item.service?.name || 'Servicio'}</span>
-                                            <span>{formatMoney(Number(item.unitPrice))}</span>
-                                            <input
-                                                type="number"
-                                                min="1"
-                                                value={item.quantity}
-                                                onChange={(e) => {
-                                                    const newServices = [...formData.services];
-                                                    newServices[index].quantity = parseInt(e.target.value) || 1;
-                                                    setFormData({ ...formData, services: newServices });
-                                                }}
-                                            />
-                                            <span>{formatMoney(Number(item.quantity * item.unitPrice))}</span>
-                                            <button
-                                                type="button"
-                                                className="remove-btn"
-                                                onClick={() => {
-                                                    const newServices = formData.services.filter((_, i) => i !== index);
-                                                    setFormData({ ...formData, services: newServices });
-                                                }}
-                                            >
-                                                <Trash2 size={16} />
-                                                <span className="sr-only">Quitar servicio</span>
-                                            </button>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-
-                        {activeTab === 'menu' && (
-                            <div className="catering-tab-panel modal-content-group">
-                                <div className="modal-section-header">
-                                    <Users size={18} />
-                                    <h3>Menú del evento</h3>
-                                </div>
-                                <div className="catering-tab-toolbar">
-                                    <Field label="Categoría" htmlFor="catering-select-5">
+                                    <Field label="Título del evento" htmlFor="catering-event-title" required>
+                                        <Input
+                                            id="catering-event-title"
+                                            placeholder="Ej: Cumpleaños de María"
+                                            value={formData.title}
+                                            onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                                        />
+                                    </Field>
+                                    <Field label="Fecha" htmlFor="catering-event-date" required>
+                                        <DateInput
+                                            id="catering-event-date"
+                                            value={formData.date}
+                                            onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                                        />
+                                    </Field>
+                                    <Field label="Hora" htmlFor="catering-event-time" required>
+                                        <Input
+                                            id="catering-event-time"
+                                            type="time"
+                                            value={formData.time}
+                                            onChange={(e) => setFormData({ ...formData, time: e.target.value })}
+                                        />
+                                    </Field>
+                                    <Field label="Estado" htmlFor="catering-select-2" hint={selectedEvent?.status === 'RESERVED' ? 'El estado Pagado se asigna automáticamente al completar el saldo.' : undefined}>
                                         <AppSelect
-                                            inputId="catering-select-5"
-                                            value={menuCategoryFilter}
+                                            inputId="catering-select-2"
+                                            value={formData.status}
                                             isClearable={false}
-                                            onChange={(option) => setMenuCategoryFilter(option ?? 'all')}
-                                            options={menuCategoryOptions}
-                                            placeholder="Todas las categorías"
-                                        />
-                                    </Field>
-                                    <Field label="Agregar Plato" htmlFor="catering-select-6">
-                                        <AppSelect
-                                            inputId="catering-select-6"
-                                            value={null}
                                             onChange={(option) => {
-                                                if (option) {
-                                                    const menuItem = allMenuItems.find((m) => m.id.toString() === option);
-                                                    if (menuItem) {
-                                                        setFormData({
-                                                            ...formData,
-                                                            menuItems: [...formData.menuItems, { menuItem, quantity: 1, unitPrice: menuItem.price || 0 }]
-                                                        });
-                                                    }
-                                                }
+                                                if (!option) return;
+                                                setFormData({ ...formData, status: option });
+                                                if (option !== 'FINISHED') setFinishWarehouseId(null);
                                             }}
-                                            options={filteredMenuItems.map((m) => ({ value: m.id.toString(), label: `${m.name} · ${m.category?.name || 'Sin categoría'} - ${formatMoney(Number(m.price || 0))}` }))}
-                                            placeholder="Seleccione un plato..."
-                                            isClearable
+                                            options={getCateringStatusOptions(selectedEvent?.status).map((value) => ({
+                                                value,
+                                                label: getStatusText(value),
+                                            }))}
+                                            isDisabled={Boolean(selectedEvent && isCateringStatusTerminal(selectedEvent.status))}
                                         />
                                     </Field>
-                                    <Button
-                                        type="button"
-                                        variant="ghost"
-                                        className="catering-stock-check"
-                                        onClick={checkAvailability}
-                                        aria-label="Verificar inventario"
-                                        title="Verificar inventario"
-                                    >
-                                        <AlertCircle size={18} />
-                                    </Button>
-                                </div>
+                                    <Field label="Invitados" htmlFor="catering-people-count" required>
+                                        <NumberInput
+                                            id="catering-people-count"
+                                            decimals={0}
+                                            min={1}
+                                            value={Number.isFinite(formData.peopleCount) ? formData.peopleCount : null}
+                                            onChange={(v) => setFormData({ ...formData, peopleCount: v === null ? 0 : Math.trunc(v) })}
+                                        />
+                                    </Field>
+                                    {selectedEvent?.status === 'PAID' && formData.status === 'FINISHED' && (
+                                        <Field label="Bodega para consumo" htmlFor="catering-select-3" required>
+                                            <AppSelect
+                                                inputId="catering-select-3"
+                                                options={allWarehouses
+                                                    .filter((warehouse) => warehouse.type === 'BRANCH' && warehouse.branchId === Number(formData.branchId))
+                                                    .map((warehouse) => ({ value: warehouse.id, label: `${warehouse.name} (${warehouse.code})` }))}
+                                                value={finishWarehouseId}
+                                                onChange={(option) => setFinishWarehouseId(option ?? null)}
+                                                placeholder="Seleccionar bodega de la sucursal..."
+                                                noOptionsText="No hay bodegas de sucursal disponibles"
+                                            />
+                                        </Field>
+                                    )}
+                                </FormGrid>
 
-                                {availabilityAlerts.length > 0 && (
-                                    <div className="availability-alert">
-                                        <AlertCircle size={20} />
-                                        <div>
-                                            <strong>Alertas de Inventario:</strong>
-                                            <ul style={{ margin: '5px 0 0 20px', padding: 0 }}>
-                                                {availabilityAlerts.map((alert, i) => (
-                                                    <li key={alert.productId ?? i}>{formatAvailabilityAlert(alert)}</li>
-                                                ))}
-                                            </ul>
-                                        </div>
+                                {finishPreviewEventId != null && finishWarehouseId != null && (
+                                    <div className="catering-finish-preview" aria-live="polite">
+                                        <p className="catering-hint">
+                                            Cada ingrediente se descuenta de la bodega asignada por las reglas de la sucursal;
+                                            sin regla, de la bodega seleccionada.
+                                        </p>
+                                        {finishPreviewError && <LoadErrorState message={finishPreviewError} />}
+                                        {finishPreview && finishPreview.length === 0 && (
+                                            <p className="catering-hint">El evento no tiene ingredientes con receta para descontar.</p>
+                                        )}
+                                        {finishPreview && finishPreview.length > 0 && (
+                                            <DataTable<CateringInventoryPreviewLine>
+                                                ariaLabel="Ingredientes a descontar"
+                                                variant="flat"
+                                                columns={FINISH_PREVIEW_COLUMNS}
+                                                rows={finishPreview}
+                                                rowKey={(line) => line.productId}
+                                                rowTone={(line) => (line.shortage > 0 ? 'danger' : undefined)}
+                                                pagination={{ mode: 'client' }}
+                                                defaultPageSize={50}
+                                                hidePaginationIfSinglePage
+                                            />
+                                        )}
+                                        {finishPreview?.some((line) => line.shortage > 0) && (
+                                            <p className="catering-hint">
+                                                Hay faltantes: como en ventas, el evento se finaliza igual y se registra existencia negativa.
+                                            </p>
+                                        )}
                                     </div>
                                 )}
+                            </FormSection>
+                        </>
+                    )}
 
-                                <div className="items-table">
-                                    {formData.menuItems.length > 0 && (
-                                        <div className="items-table-header">
-                                            <span>Plato</span>
-                                            <span>Precio</span>
-                                            <span>Cant.</span>
-                                            <span>Subtotal</span>
-                                            <span></span>
-                                        </div>
-                                    )}
-                                    {formData.menuItems.length === 0 && (
-                                        <div className="catering-empty-items">
-                                            <Users size={24} aria-hidden="true" />
-                                            <strong>Menú pendiente</strong>
-                                            <span>Selecciona los platos que formarán parte del evento.</span>
-                                        </div>
-                                    )}
-                                    {formData.menuItems.map((item, index) => (
-                                        <div key={index} className="items-table-row">
-                                            <span>{item.menuItem?.name || 'Plato'}</span>
-                                            <span>{formatMoney(Number(item.unitPrice))}</span>
-                                            <input
-                                                type="number"
-                                                min="1"
-                                                value={item.quantity}
-                                                onChange={(e) => {
-                                                    const newMenu = [...formData.menuItems];
-                                                    newMenu[index].quantity = parseInt(e.target.value) || 1;
-                                                    setFormData({ ...formData, menuItems: newMenu });
-                                                }}
-                                            />
-                                            <span>{formatMoney(Number(item.quantity * item.unitPrice))}</span>
-                                            <button
-                                                type="button"
-                                                className="remove-btn"
-                                                onClick={() => {
-                                                    const newMenu = formData.menuItems.filter((_, i) => i !== index);
-                                                    setFormData({ ...formData, menuItems: newMenu });
-                                                }}
-                                            >
-                                                <Trash2 size={16} />
-                                                <span className="sr-only">Quitar plato</span>
-                                            </button>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
+                    {activeTab === 'logistics' && (
+                        <FormSection title="Logística y notas">
+                            <Field label="Ubicación" htmlFor="catering-location">
+                                <Input
+                                    id="catering-location"
+                                    placeholder="Dirección, salón o punto de referencia"
+                                    value={formData.location}
+                                    onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+                                />
+                            </Field>
+                            <Field label="Notas operativas" htmlFor="catering-notes">
+                                <Textarea
+                                    id="catering-notes"
+                                    rows={7}
+                                    placeholder="Montaje, acceso, contacto en sitio y observaciones para el equipo"
+                                    value={formData.notes}
+                                    onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                                />
+                            </Field>
+                        </FormSection>
+                    )}
 
-                        {activeTab === 'clauses' && (
-                            <div className="catering-tab-panel">
-                                <div className="modal-content-group">
-                                    <div className="modal-section-header">
-                                        <FileText size={18} />
-                                        <h3>Cláusulas del contrato</h3>
-                                    </div>
-                                    <p className="catering-section-help">
-                                        Defina los términos específicos para este evento de catering.
-                                    </p>
+                    {activeTab === 'services' && (
+                        <FormSection title="Servicios del evento">
+                            <Field label="Agregar servicio" htmlFor="catering-select-4">
+                                <AppSelect
+                                    inputId="catering-select-4"
+                                    value={null}
+                                    onChange={(option) => {
+                                        if (!option) return;
+                                        const service = allServices.find((s) => s.id.toString() === option);
+                                        if (service) {
+                                            setFormData({
+                                                ...formData,
+                                                services: [...formData.services, { service, quantity: 1, unitPrice: service.salePrice ?? 0 }],
+                                            });
+                                        }
+                                    }}
+                                    options={allServices.map((s) => ({ value: s.id.toString(), label: `${s.name} - ${formatMoney(Number(s.salePrice))}` }))}
+                                    placeholder="Seleccione un servicio..."
+                                    isClearable
+                                />
+                            </Field>
+                            <DataTable<ItemRow<CateringServiceEntry>>
+                                ariaLabel="Servicios del evento"
+                                variant="flat"
+                                columns={serviceColumns}
+                                rows={formData.services.map((item, index) => ({ item, index }))}
+                                rowKey={(row) => row.index}
+                                hidePaginationIfSinglePage
+                                defaultPageSize={100}
+                                stackOnMobile
+                                empty={<EmptyState icon={ConciergeBell} title="Sin servicios agregados" description="Selecciona un servicio para incorporarlo al evento." />}
+                            />
+                        </FormSection>
+                    )}
 
-                                    <div className="modal-input-group">
-                                        <label>Manifiestan (Introducción)</label>
-                                        <textarea
-                                            className="modal-standard-input"
-                                            rows={2}
-                                            placeholder="Declaraciones iniciales de las partes..."
-                                            value={formData.clauses.manifiestan}
-                                            onChange={e => setFormData({ ...formData, clauses: { ...formData.clauses, manifiestan: e.target.value } })}
-                                        />
-                                    </div>
-
-                                    <div className="modal-input-group" style={{ marginTop: '16px' }}>
-                                        <label>Objeto del Contrato</label>
-                                        <textarea
-                                            className="modal-standard-input"
-                                            rows={2}
-                                            placeholder="Descripción detallada del servicio contratado..."
-                                            value={formData.clauses.objetoContrato}
-                                            onChange={e => setFormData({ ...formData, clauses: { ...formData.clauses, objetoContrato: e.target.value } })}
-                                        />
-                                    </div>
-
-                                    <div className="modal-form-row" style={{ marginTop: '16px' }}>
-                                        <div className="modal-input-group">
-                                            <label>Duración del Servicio</label>
-                                            <textarea
-                                                className="modal-standard-input"
-                                                rows={2}
-                                                placeholder="Ej: 5 horas desde el inicio..."
-                                                value={formData.clauses.duracionServicio}
-                                                onChange={e => setFormData({ ...formData, clauses: { ...formData.clauses, duracionServicio: e.target.value } })}
-                                            />
-                                        </div>
-                                        <div className="modal-input-group">
-                                            <label>Gastos durante el Servicio</label>
-                                            <textarea
-                                                className="modal-standard-input"
-                                                rows={2}
-                                                placeholder="Ej: Incluye transporte y limpieza..."
-                                                value={formData.clauses.gastosServicio}
-                                                onChange={e => setFormData({ ...formData, clauses: { ...formData.clauses, gastosServicio: e.target.value } })}
-                                            />
-                                        </div>
-                                    </div>
-
-                                    <div className="modal-input-group" style={{ marginTop: '16px' }}>
-                                        <label>Demora de Pago</label>
-                                        <textarea
-                                            className="modal-standard-input"
-                                            rows={2}
-                                            placeholder="Penalidades o condiciones por retraso en pagos..."
-                                            value={formData.clauses.demoraPago}
-                                            onChange={e => setFormData({ ...formData, clauses: { ...formData.clauses, demoraPago: e.target.value } })}
-                                        />
-                                    </div>
-
-                                    <div className="modal-input-group" style={{ marginTop: '16px' }}>
-                                        <label>Obligaciones del Proveedor</label>
-                                        <textarea
-                                            className="modal-standard-input"
-                                            rows={3}
-                                            placeholder="Compromisos específicos de la empresa..."
-                                            value={formData.clauses.obligacionesProveedor}
-                                            onChange={e => setFormData({ ...formData, clauses: { ...formData.clauses, obligacionesProveedor: e.target.value } })}
-                                        />
-                                    </div>
-
-                                    <div className="modal-input-group" style={{ marginTop: '16px' }}>
-                                        <label>Obligaciones del Cliente</label>
-                                        <textarea
-                                            className="modal-standard-input"
-                                            rows={3}
-                                            placeholder="Compromisos específicos del cliente..."
-                                            value={formData.clauses.obligacionesCliente}
-                                            onChange={e => setFormData({ ...formData, clauses: { ...formData.clauses, obligacionesCliente: e.target.value } })}
-                                        />
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                        {activeTab === 'financial' && selectedEvent && (
-                            <div className="catering-tab-panel">
-                                <div className="financial-container">
-                                    <div className="financial-secondary-row">
-                                        <div className="summary-box-plain">
-                                            <span className="label">Subtotal</span>
-                                            <span className="value">{selectedEvent.fiscalSubtotal == null ? 'No certificado' : formatMoney(Number(selectedEvent.fiscalSubtotal))}</span>
-                                        </div>
-                                        <div className="summary-box-plain">
-                                            <span className="label">IVA ({selectedEvent.fiscalTaxRatePercent == null ? taxRate : Number(selectedEvent.fiscalTaxRatePercent)}%)</span>
-                                            <span className="value">{selectedEvent.fiscalTax == null ? 'No certificado' : formatMoney(Number(selectedEvent.fiscalTax))}</span>
-                                        </div>
-                                    </div>
-
-                                    <div className="financial-main-row">
-                                        <div className="summary-item highlighted">
-                                            <span className="label">Total General</span>
-                                            <span className="value">{formatMoney(Number(selectedEvent.totalAmount || 0))}</span>
-                                        </div>
-                                        <div className="summary-item success">
-                                            <span className="label">Total Pagado</span>
-                                            <span className="value">{formatMoney(selectedEvent.payments?.filter((p) => p.status !== 'REVERSED').reduce((sum, p) => sum + Number(p.amount), 0) || 0)}</span>
-                                        </div>
-                                        <div className="summary-item danger">
-                                            <span className="label">Saldo Pendiente</span>
-                                            <span className="value">{formatMoney(Number(selectedEvent.balance || 0))}</span>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="payment-form" style={{ padding: '12px', background: 'var(--ui-surface-2)', borderRadius: '8px', marginBottom: '12px' }}>
-                                    <h3 style={{ marginBottom: '10px', fontSize: '0.95rem' }}>Documentos fiscales</h3>
-                                    {selectedEvent.fiscalInvoice ? (
-                                        <p style={{ margin: '0 0 10px' }}>
-                                            Factura <strong>{selectedEvent.fiscalInvoice.number}</strong> · {selectedEvent.fiscalInvoice.status === 'CREDITED' ? 'Acreditada' : 'Emitida'}
-                                        </p>
-                                    ) : (
-                                        <Button variant="primary"
-                                            type="button"
-                                            onClick={handleIssueFiscalInvoice}
-                                            disabled={!canManageCatering || fiscalBusy || !['PAID', 'FINISHED'].includes(selectedEvent.status)}
-                                        >
-                                            Emitir factura fiscal
-                                        </Button>
-                                    )}
-
-                                    {selectedEvent.fiscalCreditNote ? (
-                                        <p style={{ margin: '8px 0 0' }}>
-                                            Nota de crédito <strong>{selectedEvent.fiscalCreditNote.number}</strong> · {selectedEvent.fiscalCreditNote.reason}
-                                        </p>
-                                    ) : selectedEvent.fiscalInvoice?.status === 'ISSUED' && (
-                                        <div style={{ display: 'grid', gap: '10px', marginTop: '12px' }}>
-                                            <div className="modal-input-group" style={{ marginBottom: 0 }}>
-                                                <label>Motivo fiscal de devolución total</label>
-                                                <input
-                                                    className="modal-standard-input"
-                                                    value={fiscalCreditReason}
-                                                    onChange={(event) => setFiscalCreditReason(event.target.value)}
-                                                    placeholder="Ej. cancelación total autorizada"
-                                                />
-                                            </div>
-                                            {(selectedEvent.payments || []).filter((payment) =>
-                                                payment.status !== 'REVERSED' && payment.methodType && payment.methodType !== 'CASH'
-                                            ).map((payment) => (
-                                                <div className="modal-input-group" style={{ marginBottom: 0 }} key={payment.id}>
-                                                    <label>Referencia reembolso {payment.paymentMethod?.name || `pago #${payment.id}`}</label>
-                                                    <input
-                                                        className="modal-standard-input"
-                                                        value={payment.id ? externalRefundReferences[payment.id] || '' : ''}
-                                                        onChange={(event) => payment.id && setExternalRefundReferences((current) => ({ ...current, [payment.id!]: event.target.value }))}
-                                                    />
-                                                </div>
+                    {activeTab === 'menu' && (
+                        <FormSection title="Menú del evento">
+                            <FormGrid>
+                                <Field label="Categoría" htmlFor="catering-select-5">
+                                    <AppSelect
+                                        inputId="catering-select-5"
+                                        value={menuCategoryFilter}
+                                        isClearable={false}
+                                        onChange={(option) => setMenuCategoryFilter(option ?? 'all')}
+                                        options={menuCategoryOptions}
+                                        placeholder="Todas las categorías"
+                                    />
+                                </Field>
+                                <Field label="Agregar plato" htmlFor="catering-select-6">
+                                    <AppSelect
+                                        inputId="catering-select-6"
+                                        value={null}
+                                        onChange={(option) => {
+                                            if (!option) return;
+                                            const menuItem = allMenuItems.find((m) => m.id.toString() === option);
+                                            if (menuItem) {
+                                                setFormData({
+                                                    ...formData,
+                                                    menuItems: [...formData.menuItems, { menuItem, quantity: 1, unitPrice: menuItem.price || 0 }],
+                                                });
+                                            }
+                                        }}
+                                        options={filteredMenuItems.map((m) => ({ value: m.id.toString(), label: `${m.name} · ${m.category?.name || 'Sin categoría'} - ${formatMoney(Number(m.price || 0))}` }))}
+                                        placeholder="Seleccione un plato..."
+                                        isClearable
+                                    />
+                                </Field>
+                            </FormGrid>
+                            {availabilityAlerts.length > 0 && (
+                                <div className="catering-alert" role="alert">
+                                    <AlertCircle size={20} aria-hidden="true" />
+                                    <div>
+                                        <strong>Alertas de inventario</strong>
+                                        <ul>
+                                            {availabilityAlerts.map((alert, i) => (
+                                                <li key={alert.productId ?? i}>{formatAvailabilityAlert(alert)}</li>
                                             ))}
-                                            {selectedEvent.status === 'FINISHED' && (
-                                                <label style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={returnCateringInventory}
-                                                        onChange={(event) => setReturnCateringInventory(event.target.checked)}
-                                                    />
-                                                    La mercancía regresó físicamente: restaurar inventario y costo exactos
-                                                </label>
-                                            )}
-                                            <Button type="button" variant="secondary" onClick={handleIssueFiscalCreditNote} disabled={!canManageCatering || fiscalBusy}>
+                                        </ul>
+                                    </div>
+                                </div>
+                            )}
+
+                            <DataTable<ItemRow<CateringMenuEntry>>
+                                ariaLabel="Platos del evento"
+                                variant="flat"
+                                columns={menuColumns}
+                                rows={formData.menuItems.map((item, index) => ({ item, index }))}
+                                rowKey={(row) => row.index}
+                                hidePaginationIfSinglePage
+                                defaultPageSize={100}
+                                stackOnMobile
+                                empty={<EmptyState icon={Users} title="Menú pendiente" description="Selecciona los platos que formarán parte del evento." />}
+                            />
+                        </FormSection>
+                    )}
+
+                    {activeTab === 'clauses' && (
+                        <FormSection title="Cláusulas del contrato" description="Defina los términos específicos para este evento de catering.">
+                            <Field label="Manifiestan (introducción)" htmlFor="catering-clause-manifiestan">
+                                <Textarea
+                                    id="catering-clause-manifiestan"
+                                    rows={2}
+                                    placeholder="Declaraciones iniciales de las partes..."
+                                    value={formData.clauses.manifiestan}
+                                    onChange={(e) => setFormData({ ...formData, clauses: { ...formData.clauses, manifiestan: e.target.value } })}
+                                />
+                            </Field>
+                            <Field label="Objeto del contrato" htmlFor="catering-clause-objeto">
+                                <Textarea
+                                    id="catering-clause-objeto"
+                                    rows={2}
+                                    placeholder="Descripción detallada del servicio contratado..."
+                                    value={formData.clauses.objetoContrato}
+                                    onChange={(e) => setFormData({ ...formData, clauses: { ...formData.clauses, objetoContrato: e.target.value } })}
+                                />
+                            </Field>
+                            <FormGrid>
+                                <Field label="Duración del servicio" htmlFor="catering-clause-duracion">
+                                    <Textarea
+                                        id="catering-clause-duracion"
+                                        rows={2}
+                                        placeholder="Ej: 5 horas desde el inicio..."
+                                        value={formData.clauses.duracionServicio}
+                                        onChange={(e) => setFormData({ ...formData, clauses: { ...formData.clauses, duracionServicio: e.target.value } })}
+                                    />
+                                </Field>
+                                <Field label="Gastos durante el servicio" htmlFor="catering-clause-gastos">
+                                    <Textarea
+                                        id="catering-clause-gastos"
+                                        rows={2}
+                                        placeholder="Ej: Incluye transporte y limpieza..."
+                                        value={formData.clauses.gastosServicio}
+                                        onChange={(e) => setFormData({ ...formData, clauses: { ...formData.clauses, gastosServicio: e.target.value } })}
+                                    />
+                                </Field>
+                            </FormGrid>
+                            <Field label="Demora de pago" htmlFor="catering-clause-demora">
+                                <Textarea
+                                    id="catering-clause-demora"
+                                    rows={2}
+                                    placeholder="Penalidades o condiciones por retraso en pagos..."
+                                    value={formData.clauses.demoraPago}
+                                    onChange={(e) => setFormData({ ...formData, clauses: { ...formData.clauses, demoraPago: e.target.value } })}
+                                />
+                            </Field>
+                            <Field label="Obligaciones del proveedor" htmlFor="catering-clause-proveedor">
+                                <Textarea
+                                    id="catering-clause-proveedor"
+                                    rows={3}
+                                    placeholder="Compromisos específicos de la empresa..."
+                                    value={formData.clauses.obligacionesProveedor}
+                                    onChange={(e) => setFormData({ ...formData, clauses: { ...formData.clauses, obligacionesProveedor: e.target.value } })}
+                                />
+                            </Field>
+                            <Field label="Obligaciones del cliente" htmlFor="catering-clause-cliente">
+                                <Textarea
+                                    id="catering-clause-cliente"
+                                    rows={3}
+                                    placeholder="Compromisos específicos del cliente..."
+                                    value={formData.clauses.obligacionesCliente}
+                                    onChange={(e) => setFormData({ ...formData, clauses: { ...formData.clauses, obligacionesCliente: e.target.value } })}
+                                />
+                            </Field>
+                        </FormSection>
+                    )}
+
+                </form>
+
+                {activeTab === 'financial' && selectedEvent && (
+                    <div className="catering-form">
+                            <FormSection title="Resumen financiero">
+                                <dl className="catering-facts">
+                                    <div>
+                                        <dt>Subtotal</dt>
+                                        <dd>{selectedEvent.fiscalSubtotal == null ? 'No certificado' : formatMoney(Number(selectedEvent.fiscalSubtotal))}</dd>
+                                    </div>
+                                    <div>
+                                        <dt>IVA ({selectedEvent.fiscalTaxRatePercent == null ? taxRate : Number(selectedEvent.fiscalTaxRatePercent)}%)</dt>
+                                        <dd>{selectedEvent.fiscalTax == null ? 'No certificado' : formatMoney(Number(selectedEvent.fiscalTax))}</dd>
+                                    </div>
+                                    <div className="is-strong">
+                                        <dt>Total general</dt>
+                                        <dd>{formatMoney(Number(selectedEvent.totalAmount || 0))}</dd>
+                                    </div>
+                                    <div>
+                                        <dt>Total pagado</dt>
+                                        <dd className="is-success">{formatMoney(paidTotal)}</dd>
+                                    </div>
+                                    <div>
+                                        <dt>Saldo pendiente</dt>
+                                        <dd className={Number(selectedEvent.balance || 0) > 0 ? 'is-danger' : undefined}>{formatMoney(Number(selectedEvent.balance || 0))}</dd>
+                                    </div>
+                                </dl>
+                            </FormSection>
+
+                            <FormSection
+                                title="Documentos fiscales"
+                                actions={(
+                                    <>
+                                        {!selectedEvent.fiscalInvoice && (
+                                            <Button
+                                                onClick={() => void handleIssueFiscalInvoice()}
+                                                disabled={!canManageCatering || fiscalBusy || !['PAID', 'FINISHED'].includes(selectedEvent.status)}
+                                                loading={fiscalBusy}
+                                            >
+                                                Emitir factura fiscal
+                                            </Button>
+                                        )}
+                                        {!selectedEvent.fiscalCreditNote && selectedEvent.fiscalInvoice?.status === 'ISSUED' && (
+                                            <Button onClick={() => void handleIssueFiscalCreditNote()} disabled={!canManageCatering || fiscalBusy} loading={fiscalBusy}>
                                                 Emitir nota de crédito total
                                             </Button>
-                                        </div>
-                                    )}
-                                </div>
+                                        )}
+                                    </>
+                                )}
+                            >
+                                {selectedEvent.fiscalInvoice ? (
+                                    <p className="catering-line">
+                                        Factura <strong>{selectedEvent.fiscalInvoice.number}</strong> · {selectedEvent.fiscalInvoice.status === 'CREDITED' ? 'Acreditada' : 'Emitida'}
+                                    </p>
+                                ) : (
+                                    <p className="catering-line">Aún no se ha emitido la factura fiscal.</p>
+                                )}
 
-                                <div className="payment-form" style={{ padding: '10px', background: 'var(--ui-surface-2)', borderRadius: '8px' }}>
-                                    <h3 style={{ marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.95rem' }}>
-                                        Registrar Pago
-                                    </h3>
-                                    <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr auto', gap: '12px', alignItems: 'flex-end' }}>
-                                        <div className="modal-input-group" style={{ marginBottom: 0 }}>
-                                            <label style={{ fontSize: '0.7rem' }}>Monto</label>
-                                            <input
-                                                type="number"
-                                                className="modal-standard-input"
-                                                value={paymentData.amount}
-                                                style={{ height: '40px', boxSizing: 'border-box' }}
-                                                onChange={e => setPaymentData({ ...paymentData, amount: parseFloat(e.target.value) })}
-                                            />
-                                        </div>
-                                        <Field label="Método de Pago" htmlFor="catering-select-7">
-                                            <AppSelect
-                                                inputId="catering-select-7"
-                                                value={paymentData.paymentMethodId || null}
-                                                onChange={(option) =>
-                                                    setPaymentData({ ...paymentData, paymentMethodId: option || '' })}
-                                                options={paymentMethods.map((pm) => ({ value: pm.id.toString(), label: pm.name }))}
-                                                placeholder="Seleccione..."
-                                                isClearable
+                                {selectedEvent.fiscalCreditNote ? (
+                                    <p className="catering-line">
+                                        Nota de crédito <strong>{selectedEvent.fiscalCreditNote.number}</strong> · {selectedEvent.fiscalCreditNote.reason}
+                                    </p>
+                                ) : selectedEvent.fiscalInvoice?.status === 'ISSUED' && (
+                                    <>
+                                        <Field label="Motivo fiscal de devolución total" htmlFor="catering-credit-reason">
+                                            <Input
+                                                id="catering-credit-reason"
+                                                value={fiscalCreditReason}
+                                                onChange={(event) => setFiscalCreditReason(event.target.value)}
+                                                placeholder="Ej. cancelación total autorizada"
                                             />
                                         </Field>
-                                        <div className="modal-input-group" style={{ marginBottom: 0 }}>
-                                            <Button variant="primary" type="button" onClick={handleAddPayment} disabled={!canManageCatering || addingPayment} style={{ height: '40px', padding: '0 20px', whiteSpace: 'nowrap' }}>
-                                                Agregar Pago
-                                            </Button>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="payments-list">
-                                    <h3 style={{ marginTop: '30px', marginBottom: '10px' }}>Historial de Pagos</h3>
-                                    {canManageCatering && selectedEvent.payments?.some((payment) => payment.status !== 'REVERSED') && (
-                                        <div className="modal-input-group" style={{ marginBottom: '12px' }}>
-                                            <label>Motivo del reverso</label>
-                                            <input
-                                                className="modal-standard-input"
-                                                value={reversalReason}
-                                                onChange={(event) => setReversalReason(event.target.value)}
-                                                placeholder="Ej. pago duplicado o devolución autorizada"
-                                            />
-                                        </div>
-                                    )}
-                                    <div className="items-table">
-                                        <div className="items-table-header" style={{ gridTemplateColumns: '1fr 1fr 1fr 1fr' }}>
-                                            <span>Fecha</span>
-                                            <span>Método</span>
-                                            <span>Monto</span>
-                                            <span>Estado</span>
-                                        </div>
-                                        {selectedEvent.payments?.map((p, i) => (
-                                            <div key={p.id ?? i} className="items-table-row" style={{ gridTemplateColumns: '1fr 1fr 1fr 1fr' }}>
-                                                <span>{p.date ? new Date(p.date).toLocaleDateString() : '-'}</span>
-                                                <span>{p.paymentMethod?.name}</span>
-                                                <span>{formatMoney(Number(p.amount))}</span>
-                                                <span>
-                                                    {p.status === 'REVERSED' ? `Revertido${p.reversalReason ? `: ${p.reversalReason}` : ''}` : (
-                                                        canManageCatering
-                                                            ? <Button type="button" variant="secondary" onClick={() => handleReversePayment(p)}>Revertir</Button>
-                                                            : 'Activo'
-                                                    )}
-                                                </span>
-                                            </div>
+                                        {activeNonCashPayments.map((payment) => (
+                                            <Field
+                                                key={payment.id}
+                                                label={`Referencia reembolso ${payment.paymentMethod?.name || `pago #${payment.id}`}`}
+                                                htmlFor={`catering-refund-${payment.id}`}
+                                            >
+                                                <Input
+                                                    id={`catering-refund-${payment.id}`}
+                                                    value={payment.id ? externalRefundReferences[payment.id] || '' : ''}
+                                                    onChange={(event) => payment.id && setExternalRefundReferences((current) => ({ ...current, [payment.id!]: event.target.value }))}
+                                                />
+                                            </Field>
                                         ))}
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-                    </div>
+                                        {selectedEvent.status === 'FINISHED' && (
+                                            <Checkbox
+                                                checked={returnCateringInventory}
+                                                onChange={(event) => setReturnCateringInventory(event.target.checked)}
+                                                label="La mercancía regresó físicamente: restaurar inventario y costo exactos"
+                                            />
+                                        )}
+                                    </>
+                                )}
+                            </FormSection>
 
-                    </form>
+                            <FormSection
+                                title="Registrar pago"
+                                actions={(
+                                    <Button variant="primary" icon={Plus} onClick={() => void handleAddPayment()} disabled={!canManageCatering || addingPayment} loading={addingPayment}>
+                                        Agregar pago
+                                    </Button>
+                                )}
+                            >
+                                <FormGrid columns="repeat(auto-fit, minmax(12rem, 1fr))">
+                                    <Field label="Monto" htmlFor="catering-payment-amount">
+                                        <NumberInput
+                                            id="catering-payment-amount"
+                                            min={0}
+                                            value={paymentData.amount || null}
+                                            onChange={(v) => setPaymentData({ ...paymentData, amount: v ?? 0 })}
+                                        />
+                                    </Field>
+                                    <Field label="Método de pago" htmlFor="catering-select-7">
+                                        <AppSelect
+                                            inputId="catering-select-7"
+                                            value={paymentData.paymentMethodId || null}
+                                            onChange={(option) => setPaymentData({ ...paymentData, paymentMethodId: option || '' })}
+                                            options={paymentMethods.map((pm) => ({ value: pm.id.toString(), label: pm.name }))}
+                                            placeholder="Seleccione..."
+                                            isClearable
+                                        />
+                                    </Field>
+                                </FormGrid>
+                            </FormSection>
+
+                            <FormSection title="Historial de pagos">
+                                {canManageCatering && selectedEvent.payments?.some((payment) => payment.status !== 'REVERSED') && (
+                                    <Field label="Motivo del reverso" htmlFor="catering-reversal-reason">
+                                        <Input
+                                            id="catering-reversal-reason"
+                                            value={reversalReason}
+                                            onChange={(event) => setReversalReason(event.target.value)}
+                                            placeholder="Ej. pago duplicado o devolución autorizada"
+                                        />
+                                    </Field>
+                                )}
+                                <DataTable<CateringPaymentEntry>
+                                    ariaLabel="Historial de pagos"
+                                    variant="flat"
+                                    columns={paymentColumns}
+                                    rows={selectedEvent.payments ?? []}
+                                    rowKey={(p) => p.id ?? `${p.date}-${p.amount}`}
+                                    hidePaginationIfSinglePage
+                                    stackOnMobile
+                                    empty="Aún no hay pagos registrados."
+                                />
+                            </FormSection>
+                    </div>
+                )}
             </FullScreenModal>
-        </div >
+        </PageContent>
     );
 }

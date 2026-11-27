@@ -1,5 +1,5 @@
 import { Award, Phone, Star } from 'lucide-react';
-import { Button, DataTable, formatNumber, type Column } from '@/ui';
+import { Checkbox, DataTable, StatCard, formatNumber, type Column } from '@/ui';
 import {
     areaAverages, bestWaiter, detractorAlerts, fmtAvg, fmtNps, ineligibleLabel, monthLabel, npsTone, trendPoints,
     type SurveyRanking, type SurveyRankingItem, type SurveyResponseRow, type SurveyResponsesPage, type SurveySummary,
@@ -22,7 +22,7 @@ export interface SurveyReportViewProps {
 const dateTime = (iso: string) => new Date(iso).toLocaleString('es', { dateStyle: 'short', timeStyle: 'short' });
 
 const rankingColumns: Column<SurveyRankingItem>[] = [
-    { key: 'rank', header: '#', render: (r) => r.rank },
+    { key: 'rank', header: '#', type: 'number', decimals: 0, render: (r) => r.rank },
     { key: 'name', header: 'Mesero', render: (r) => r.name || '—' },
     { key: 'branch', header: 'Sucursal', render: (r) => r.branchName ?? '—' },
     { key: 'responses', header: 'Respuestas', type: 'number', render: (r) => r.responses },
@@ -32,7 +32,7 @@ const rankingColumns: Column<SurveyRankingItem>[] = [
 ];
 
 const responseColumns: Column<SurveyResponseRow>[] = [
-    { key: 'date', header: 'Fecha', render: (r) => dateTime(r.createdAt) },
+    { key: 'date', header: 'Fecha', type: 'date', render: (r) => dateTime(r.createdAt) },
     { key: 'branch', header: 'Sucursal', render: (r) => r.branchName },
     { key: 'waiter', header: 'Mesero', render: (r) => r.waiterName },
     { key: 'nps', header: 'NPS', type: 'number', render: (r) => <span className={`survey-nps survey-nps-${r.nps <= 6 ? 'detractor' : r.nps >= 9 ? 'promoter' : 'passive'}`}>{r.nps}</span> },
@@ -92,28 +92,35 @@ export default function SurveyReportView({
     const trend = trendPoints(summary.trend);
     const alertRows = detractorAlerts(alerts);
     const empty = summary.responses === 0;
+    const callable = alertRows.filter((r) => r.contactPhone).length;
 
     return (
         <div className="survey-report">
             {empty && <p className="survey-empty" role="status">Sin respuestas en el período</p>}
 
-            <div className="kpi-grid">
-                <div className={`kpi-card kpi-${tone}`}>
-                    <div className="kpi-label">NPS</div>
-                    <div className="kpi-value">{fmtNps(summary.nps)}</div>
-                    <div className="kpi-detail">{summary.promoters} promotores · {summary.detractors} detractores</div>
-                </div>
-                <div className="kpi-card kpi-neutral">
-                    <div className="kpi-label">Respuestas</div>
-                    <div className="kpi-value">{summary.responses}</div>
-                </div>
-                {areas.map((a) => (
-                    <div key={a.key} className={`kpi-card ${a === weakest ? 'kpi-warning' : 'kpi-neutral'}`}>
-                        <div className="kpi-label">{a.label}</div>
-                        <div className="kpi-value">{fmtAvg(a.value)}</div>
-                        {a === weakest && <div className="kpi-detail">Punto a mejorar</div>}
-                    </div>
-                ))}
+            <div className="survey-kpis">
+                <StatCard
+                    label="NPS"
+                    value={fmtNps(summary.nps)}
+                    tone={tone}
+                    context={`${summary.responses} respuestas · ${summary.promoters} promotores · ${summary.detractors} detractores`}
+                />
+                {weakest && (
+                    <StatCard
+                        label="Punto a mejorar"
+                        value={fmtAvg(weakest.value)}
+                        tone="warning"
+                        context={`${weakest.label} es el área con la calificación más baja (de 5)`}
+                    />
+                )}
+                {alertRows.length > 0 && (
+                    <StatCard
+                        label="Detractores por contactar"
+                        value={formatNumber(callable, 0)}
+                        tone="danger"
+                        context={`${callable === 1 ? 'deja' : 'dejan'} teléfono, de ${alertRows.length} ${alertRows.length === 1 ? 'detractor' : 'detractores'} del período`}
+                    />
+                )}
             </div>
 
             {!empty && (
@@ -199,22 +206,16 @@ export default function SurveyReportView({
             <section className="survey-section">
                 <div className="survey-section-head">
                     <h2>Respuestas</h2>
-                    <label className="survey-toggle">
-                        <input type="checkbox" checked={detractorsOnly} onChange={(e) => onToggleDetractors(e.target.checked)} />
-                        Solo detractores
-                    </label>
+                    <Checkbox label="Solo detractores" checked={detractorsOnly} onChange={(e) => onToggleDetractors(e.target.checked)} />
                 </div>
-                {responsesError && (
-                    <p className="state-error" role="alert">
-                        {responsesError} <Button variant="ghost" size="sm" onClick={onRetryResponses}>Reintentar</Button>
-                    </p>
-                )}
                 <DataTable<SurveyResponseRow>
                     columns={responseColumns}
                     rows={responses.items}
                     rowKey={(r) => r.id}
                     ariaLabel="Respuestas de encuesta"
                     empty="Sin respuestas"
+                    error={responsesError}
+                    onRetry={onRetryResponses}
                     pagination={{
                         mode: 'server',
                         page: responses.page,

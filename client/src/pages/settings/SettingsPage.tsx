@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  ConfirmDialog, Drawer, Input, PageContent, PageHeader, ScopeSelector, SettingsRow, Skeleton, UnsavedChangesBar,
+  Button, ConfirmDialog, Drawer, Input, LoadErrorState, PageContent, PageHeader, ScopeSelector, SettingsRow, Skeleton, UnsavedChangesBar,
 } from '@/ui';
 import { Search } from 'lucide-react';
 import {
@@ -56,6 +56,7 @@ export default function SettingsPage() {
   const [history, setHistory] = useState<SettingHistoryEntry[]>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [payrollRule, setPayrollRule] = useState<HrPayrollRuleVersion | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   const { draft, set, reset, dirtyKeys, errors, discard, changes } = useSettingsDraft(defs, resolved);
 
@@ -83,7 +84,7 @@ export default function SettingsPage() {
       .then((r) => { if (alive) setPayrollRule(r.items.find((x) => x.status === 'ACTIVE') ?? null); })
       .catch(() => undefined);
     return () => { alive = false; };
-  }, [loadHistory]);
+  }, [loadHistory, reloadKey]);
 
   useEffect(() => {
     let alive = true;
@@ -93,7 +94,7 @@ export default function SettingsPage() {
       .catch((err) => { if (alive) setLoadError(getApiErrorMessage(err, 'No fue posible recuperar la configuración vigente (el guardado queda bloqueado para proteger los valores existentes)')); })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
-  }, [branchId]);
+  }, [branchId, reloadKey]);
 
   const scope = useMemo(() => {
     if (branchId == null) return 'company' as const;
@@ -217,7 +218,7 @@ export default function SettingsPage() {
         </aside>
 
         <div className="settings-page__main">
-          {loadError ? <p role="alert" className="settings-page__error">{loadError}</p> : null}
+          {loadError ? <LoadErrorState message={loadError} onRetry={() => { setLoadError(null); setReloadKey((k) => k + 1); }} /> : null}
           {loading && defs.length === 0 ? <Skeleton /> : null}
           {searching && visibleSections.length === 0 ? <p className="settings-page__empty">Sin resultados para "{query}".</p> : null}
 
@@ -270,7 +271,7 @@ export default function SettingsPage() {
                 ? `Última modificación: ${lastChange.userName} · ${fmtDate(lastChange.createdAt)}`
                 : 'Sin modificaciones registradas'}
             </span>
-            <button type="button" className="settings-page__link" onClick={() => setHistoryOpen(true)}>Ver historial</button>
+            <Button variant="ghost" size="sm" onClick={() => setHistoryOpen(true)}>Ver historial</Button>
           </footer>
         </div>
       </div>

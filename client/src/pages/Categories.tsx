@@ -5,19 +5,19 @@ import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
 import { hasAnyRole } from '../utils/authz';
-import { Plus, Tag, Edit2, Trash2, Search } from 'lucide-react';
+import { Plus, Tag, Pencil, Trash2, Search } from 'lucide-react';
 import { getCategoryVisibilityLabel } from '../utils/categoryVisibility';
 import styles from './catalog.module.css';
 import {
     Badge, Button, DataTable, EmptyState, Field, FormGrid, FormSection, FullScreenModal, IconButton, Input,
-    NumberInput, PageContent, PageHeader, SegmentedControl, Switch, TableToolbar, Textarea, type Column,
+    NumberInput, PageContent, PageHeader, Switch, TableToolbar, Tabs, Textarea, type Column,
 } from '@/ui';
 
 type StatusFilter = 'all' | 'active' | 'inactive';
-const STATUS_OPTIONS: { value: StatusFilter; label: string }[] = [
-    { value: 'all', label: 'Todas' },
-    { value: 'active', label: 'Activas' },
-    { value: 'inactive', label: 'Inactivas' },
+const STATUS_TABS: { id: StatusFilter; label: string }[] = [
+    { id: 'all', label: 'Todas' },
+    { id: 'active', label: 'Activas' },
+    { id: 'inactive', label: 'Inactivas' },
 ];
 
 interface CategoryRow {
@@ -44,6 +44,7 @@ export default function Categories() {
 
     const [categories, setCategories] = useState<CategoryRow[]>([]);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingCategory, setEditingCategory] = useState<CategoryRow | null>(null);
     const [formData, setFormData] = useState({
@@ -67,7 +68,9 @@ export default function Categories() {
         try {
             const res = await categoriesAPI.getAll();
             setCategories(res.data.data);
+            setLoadError(null);
         } catch (error) {
+            setLoadError('No se pudieron cargar las categorías.');
             notifyError(error, 'No se pudieron cargar las categorías');
         } finally {
             setLoading(false);
@@ -163,6 +166,7 @@ export default function Categories() {
         {
             key: 'name',
             header: 'Categoría',
+            type: 'text',
             render: (c) => (
                 <div className={styles.cellStack}>
                     <span className={styles.cellTitle}>{c.name}</span>
@@ -170,12 +174,13 @@ export default function Categories() {
                 </div>
             )
         },
-        { key: 'prefix', header: 'Prefijo', accessor: (c) => c.codePrefix || '—' },
+        { key: 'prefix', header: 'Prefijo', type: 'text', accessor: (c) => c.codePrefix || '—' },
         { key: 'items', header: 'Platos', type: 'number', decimals: 0, accessor: (c) => c._count?.menuItems || 0 },
         { key: 'order', header: 'Orden', type: 'number', decimals: 0, accessor: (c) => c.sortOrder ?? 0 },
         {
             key: 'status',
             header: 'Estado',
+            type: 'status',
             render: (c) => (
                 <div className={styles.inline}>
                     <Badge tone={c.active ? 'success' : 'neutral'} dot>{c.active ? 'Activa' : 'Inactiva'}</Badge>
@@ -187,12 +192,15 @@ export default function Categories() {
             key: 'actions',
             header: 'Acciones',
             type: 'actions',
+            width: '100px',
             render: (c: CategoryRow) => (
                 <div className={styles.rowActions}>
-                    <IconButton size="sm" icon={Edit2} label={`Editar ${c.name}`} onClick={() => openModal(c)} />
+                    <IconButton size="sm" icon={Pencil} label={`Editar ${c.name}`} tooltip="Editar" onClick={() => openModal(c)} />
                     <IconButton
                         size="sm"
                         icon={Trash2}
+                        tone="danger"
+                        tooltip="Eliminar"
                         label={`Eliminar ${c.name}`}
                         onClick={() => handleDelete(c.id)}
                         disabled={Number(c._count?.menuItems || 0) > 0}
@@ -222,12 +230,35 @@ export default function Categories() {
                 ) : undefined}
             />
 
+            <Tabs
+                ariaLabel="Filtrar categorías por estado"
+                active={statusFilter}
+                onChange={(id) => setStatusFilter(id as StatusFilter)}
+                tabs={STATUS_TABS.map((t) => ({
+                    ...t,
+                    badge: t.id === 'all' ? categories.length : categories.filter((c) => c.active === (t.id === 'active')).length,
+                }))}
+            />
+
+            <TableToolbar>
+                <Input
+                    type="search"
+                    aria-label="Buscar categoría"
+                    placeholder="Buscar por nombre o prefijo"
+                    prefix={<Search size={14} aria-hidden="true" />}
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                />
+            </TableToolbar>
+
             <DataTable<CategoryRow>
                 ariaLabel="Listado de categorías"
                 rows={filtered}
                 rowKey={(c) => c.id}
                 columns={columns}
                 loading={loading}
+                error={loadError}
+                onRetry={() => void loadData()}
                 resetKey={`${q}|${statusFilter}`}
                 onRowClick={canMutateCategory ? (c) => openModal(c) : undefined}
                 empty={categories.length === 0 ? (
@@ -237,19 +268,6 @@ export default function Categories() {
                         action={canMutateCategory ? <Button variant="primary" onClick={() => openModal()}>Crear primera categoría</Button> : undefined}
                     />
                 ) : 'Sin resultados. Ajusta o limpia los filtros.'}
-                toolbar={(
-                    <TableToolbar>
-                        <Input
-                            type="search"
-                            aria-label="Buscar categoría"
-                            placeholder="Buscar por nombre o prefijo"
-                            prefix={<Search size={14} aria-hidden="true" />}
-                            value={search}
-                            onChange={(e) => setSearch(e.target.value)}
-                        />
-                        <SegmentedControl ariaLabel="Estado" options={STATUS_OPTIONS} value={statusFilter} onChange={setStatusFilter} />
-                    </TableToolbar>
-                )}
             />
 
             <FullScreenModal
